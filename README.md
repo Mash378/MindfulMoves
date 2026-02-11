@@ -1,5 +1,10 @@
 # MindfulMoves
 
+Steps to get the Project Running:
+
+1. To install dependencies use: npm install
+2. To run the Vite dev server go to the terminal and use: npm run dev
+3. To open the webpage click on: http://localhost:5173/
 
 # React + Vite
 
