@@ -1,6 +1,4 @@
 import { useState } from "react"
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
 import { useNavigate } from "react-router-dom";
 
 export default function Home() {
@@ -9,38 +7,38 @@ export default function Home() {
 
   return (
     <>
-    <div className="h-screen">
-      <h1 className="text-4xl font-bold mt-20">MindfulMoves</h1>
-      <button
-      className="px-6 py-3 bg-blue-600 mt-60 text-white rounded-lg hover:bg-blue-700 transition"
-      onClick={() => navigate("/signup")}
+    <div className="h-screen w-screen fixed inset-0 flex flex-col items-center justify-center bg-cover bg-center"
+      style={{ backgroundImage: "url('/background.png')" }}
     >
+      <h1 className="text-7xl font-bold mb-46">MindfulMoves</h1>
+      <button
+      className="w-80 px-8 py-4 text-2xl bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+      onClick={() => navigate("/signup")}
+      >
       Start Game
     </button>
+    <div className="flex gap-6 mt-20">
+      <button
+      className="w-40 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+      onClick={() => navigate("/leaderboard")}
+      >
+      Leader Board
+    </button>
+    <button
+      className="w-40 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+      onClick={() => navigate("/settings")}
+      >
+      Settings
+    </button>
+    <button
+      className="w-40 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+      onClick={() => navigate("/credits")}
+      >
+      Credits
+    </button>
     </div>
-    </>
-
-    // <>
-    //   <div>
-    //     <a href="https://vite.dev" target="_blank">
-    //       <img src={viteLogo} className="logo" alt="Vite logo" />
-    //     </a>
-    //     <a href="https://react.dev" target="_blank">
-    //       <img src={reactLogo} className="logo react" alt="React logo" />
-    //     </a>
-    //   </div>
-    //   <h1>Vite + React</h1>
-    //   <div className="card">
-    //     <button onClick={() => setCount((count) => count + 1)}>
-    //       count is {count}
-    //     </button>
-    //     <p>
-    //       Edit <code>src/App.jsx</code> and save to test HMR
-    //     </p>
-    //   </div>
-    //   <p className="read-the-docs">
-    //     Click on the Vite and React logos to learn more
-    //   </p>
-    // </>
+    
+  </div>
+  </>
   )
 }
