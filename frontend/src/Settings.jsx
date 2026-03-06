@@ -205,44 +205,46 @@ export default function Settings() {
             )}
 
             {activeTab === "gameplay" && (
-              <div className="space-y-4 text-lg">
-                <h2 className="text-2xl font-semibold">Gameplay Settings</h2>
-                
-                  <div className="flex items-center gap-4 mt-16 pl-76">
-                  <span className="text-xl">Enable Timer:</span>
-                  <button
-                    onClick={() => setTimerEnabled(prev => !prev)}
-                    className={`w-15 h-8 rounded-full transition-colors ${
-                      timerEnabled ? "bg-green-500" : "bg-gray-400"
-                    }`}
-                  >
-                    <div
-                      className={`h-6 w-6 bg-white rounded-full shadow-md transform transition-transform ${
-                        timerEnabled ? "translate-x-8" : "translate-x-0"
-                      }`}
-                    ></div>
-                  </button>
-                </div>
+              <div className="space-y-6 text-lg">
+                <h2 className="text-2xl font-semibold mb-16">Gameplay Settings</h2>
 
-                <div className="flex items-center gap-4 mt-12 pl-61">
-                  <span className="text-xl">Enable Move History:</span>
-                  <button
-                    onClick={() => setHistoryEnabled(prev => !prev)}
-                    className={`w-15 h-8 rounded-full transition-colors ${
-                      historyEnabled ? "bg-green-500" : "bg-gray-400"
-                    }`}
-                  >
-                    <div
-                      className={`h-6 w-6 bg-white rounded-full shadow-md transform transition-transform ${
-                        historyEnabled ? "translate-x-8" : "translate-x-0"
+                <div className="flex flex-col gap-6">
+                  <div className="flex items-center">
+                    <span className="text-xl w-120 text-left pl-52">Enable Timer:</span>
+                    <button
+                      onClick={() => setTimerEnabled(prev => !prev)}
+                      className={`relative w-15 h-8 rounded-full transition-colors ${
+                        timerEnabled ? "bg-green-500" : "bg-gray-400"
                       }`}
-                    ></div>
-                  </button>
+                    >
+                      <div
+                        className={`h-6 w-6 bg-white rounded-full shadow-md transform transition-transform ${
+                          timerEnabled ? "translate-x-8" : "translate-x-0"
+                        }`}
+                      ></div>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center">
+                    <span className="text-xl w-120 text-left pl-52">Enable Move History:</span>
+                    <button
+                      onClick={() => setHistoryEnabled(prev => !prev)}
+                      className={`relative w-15 h-8 rounded-full transition-colors ${
+                        historyEnabled ? "bg-green-500" : "bg-gray-400"
+                      }`}
+                    >
+                      <div
+                        className={`h-6 w-6 bg-white rounded-full shadow-md transform transition-transform ${
+                          historyEnabled ? "translate-x-8" : "translate-x-0"
+                        }`}
+                      ></div>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
           </div>
-       </div>
+        </div>
       </div>
     </div>
   )
