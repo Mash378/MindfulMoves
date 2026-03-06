@@ -5,7 +5,7 @@ import App from './App.jsx'
 import { BrowserRouter } from 'react-router-dom'
 import { SettingsProvider } from './SettingsContext'
 
-createRoot(document.getElementById('root')).render(
+createRoot(document.getElementById("root")).render(
   <StrictMode>
     <BrowserRouter>
       <SettingsProvider>
@@ -13,4 +13,4 @@ createRoot(document.getElementById('root')).render(
       </SettingsProvider>
     </BrowserRouter>
   </StrictMode>,
-)
+);

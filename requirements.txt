@@ -1,2 +1,0 @@
-#Backend Framework
-fastapi==0.129.0

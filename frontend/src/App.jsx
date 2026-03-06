@@ -1,6 +1,6 @@
-import './App.css';
+import "./App.css";
 import { Routes, Route } from "react-router-dom";
-import Home from './Home.jsx';
+import Home from "./Home.jsx";
 import SignUp from "./SignUp.jsx";
 import Login from "./Login.jsx";
 import Game from "./Game.jsx";
@@ -19,7 +19,7 @@ function App() {
       <Route path="/settings" element={<Settings />} />
       <Route path="/credits" element={<Credits />} />
     </Routes>
-  )
+  );
 }
 
-export default App
+export default App;
