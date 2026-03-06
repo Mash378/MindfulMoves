@@ -1,47 +1,31 @@
-import httpx
-from src.services.clerk import clerk
-from clerk_backend_api.security.types import AuthenticateRequestOptions
+import jwt
 from fastapi import Request, HTTPException, status
 from src.data.env import server_env
 
 
-def convert_to_httpx_request(request: Request) -> httpx.Request:
-    return httpx.Request(
-        method=request.method,
-        url=str(request.url),
-        headers=dict(request.headers),
-    )
-
-
-def get_current_user(request: httpx.Request):
-    try:
-        request_state = clerk.authenticate_request(
-            request,
-            AuthenticateRequestOptions(
-                authorized_parties=[server_env.FRONTEND_URL],
-            ),
+def get_current_user(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized"
         )
 
-        if not request_state.is_signed_in:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized"
-            )
-
-        if not request_state.payload:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized"
-            )
-
-        user_id = request_state.payload.get("sub")
-
+    token = auth_header.split(" ", 1)[1]
+    try:
+        payload = jwt.decode(  # pyright: ignore
+            token, server_env.JWT_SECRET_KEY, algorithms=["HS256"]
+        )
+        user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized"
             )
-
         return {"user_id": user_id}
-    except Exception as e:
+    except jwt.ExpiredSignatureError:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Invalid credentials",
-        ) from e
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired"
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        )
