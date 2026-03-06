@@ -1,0 +1,195 @@
+import uuid
+
+import chess
+from fastapi import HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from src.db.models.game import Game, GameStatus, STARTING_FEN
+from src.db.models.move import Move
+from src.db.models.user import User
+from src.features.game.ai.engine import get_ai_move
+
+
+# ---------------------------------------------------------------------------
+# Pydantic schemas
+# ---------------------------------------------------------------------------
+
+
+class NewGameResponse(BaseModel):
+    game_id: str
+    fen: str
+    status: str
+
+
+class MakeMoveRequest(BaseModel):
+    uci: str          # e.g. "e2e4", "e7e8q"
+    current_fen: str  # client board state — used as a sync guard
+
+
+class MakeMoveResponse(BaseModel):
+    player_uci: str
+    ai_uci: str | None
+    fen: str        # final board FEN after both moves (or after player if game ended)
+    status: str
+    game_over: bool
+
+
+class GameStateResponse(BaseModel):
+    game_id: str
+    fen: str
+    status: str
+    move_count: int
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _resolve_status_after(board: chess.Board, player_won: bool) -> GameStatus:
+    """Return the terminal GameStatus for the given board position."""
+    if board.is_checkmate():
+        return GameStatus.white_wins if player_won else GameStatus.black_wins
+    # All draw conditions
+    if (
+        board.is_stalemate()
+        or board.is_insufficient_material()
+        or board.is_seventyfive_moves()
+        or board.is_fivefold_repetition()
+    ):
+        return GameStatus.draw
+    return GameStatus.active
+
+
+def _update_user_stats(user: User, result: GameStatus) -> None:
+    games_played = (user.games_played or 0) + 1
+    games_won = (user.games_won or 0) + (1 if result == GameStatus.white_wins else 0)
+    user.games_played = games_played
+    user.games_won = games_won
+    user.win_rate = round((games_won / games_played) * 100)
+
+    # Simple ELO update (player is always white, AI treated as fixed 400 ELO)
+    player_elo = user.elo_rating or 400
+    ai_elo = 400
+    outcome = 1.0 if result == GameStatus.white_wins else (0.5 if result == GameStatus.draw else 0.0)
+    expected = 1 / (1 + 10 ** ((ai_elo - player_elo) / 400))
+    user.elo_rating = max(0, player_elo + round(32 * (outcome - expected)))
+
+
+# ---------------------------------------------------------------------------
+# Controller functions
+# ---------------------------------------------------------------------------
+
+
+def create_game(user_id: str, db: Session) -> NewGameResponse:
+    game = Game(
+        id=str(uuid.uuid4()),
+        user_id=user_id,
+        status=GameStatus.active,
+        current_fen=STARTING_FEN,
+    )
+    db.add(game)
+    db.commit()
+    db.refresh(game)
+    return NewGameResponse(game_id=str(game.id), fen=str(game.current_fen), status=game.status.value)
+
+
+def make_move(game_id: str, body: MakeMoveRequest, user_id: str, db: Session) -> MakeMoveResponse:
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+
+    if str(game.user_id) != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    if game.status != GameStatus.active:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Game is already over")
+
+    if body.current_fen != str(game.current_fen):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": "Board out of sync", "server_fen": str(game.current_fen)},
+        )
+
+    # Validate and apply player move
+    board = chess.Board(str(game.current_fen))
+    try:
+        player_move = chess.Move.from_uci(body.uci)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Malformed UCI move")
+
+    if player_move not in board.legal_moves:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Illegal move")
+
+    board.push(player_move)
+    fen_after_player = board.fen()
+
+    # Check game-over after player's move
+    move_number = db.query(Move).filter(Move.game_id == game_id).count() + 1
+    new_status = _resolve_status_after(board, player_won=True)
+
+    ai_uci_str: str | None = None
+    fen_after_ai: str | None = None
+
+    if new_status == GameStatus.active:
+        # AI responds
+        ai_uci_str = get_ai_move(fen_after_player)
+        if ai_uci_str is None:
+            # No legal moves for AI — shouldn't happen after a non-terminal position, treat as draw
+            new_status = GameStatus.draw
+        else:
+            board.push(chess.Move.from_uci(ai_uci_str))
+            fen_after_ai = board.fen()
+            new_status = _resolve_status_after(board, player_won=False)
+
+    final_fen = fen_after_ai if fen_after_ai else fen_after_player
+
+    # Persist move record and update game state
+    move_record = Move(
+        id=str(uuid.uuid4()),
+        game_id=game_id,
+        move_number=move_number,
+        player_uci=body.uci,
+        ai_uci=ai_uci_str,
+        fen_after_player=fen_after_player,
+        fen_after_ai=fen_after_ai,
+    )
+    db.add(move_record)
+
+    game.current_fen = final_fen
+    game.status = new_status
+
+    # Update user stats on game over
+    if new_status != GameStatus.active:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            _update_user_stats(user, new_status)
+
+    db.commit()
+
+    return MakeMoveResponse(
+        player_uci=body.uci,
+        ai_uci=ai_uci_str,
+        fen=final_fen,
+        status=new_status.value,
+        game_over=new_status != GameStatus.active,
+    )
+
+
+def get_game_state(game_id: str, user_id: str, db: Session) -> GameStateResponse:
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+
+    if str(game.user_id) != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    move_count = db.query(Move).filter(Move.game_id == game_id).count()
+
+    return GameStateResponse(
+        game_id=str(game.id),
+        fen=str(game.current_fen),
+        status=game.status.value,
+        move_count=move_count,
+    )
