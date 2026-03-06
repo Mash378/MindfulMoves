@@ -1,9 +1,19 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom";
+import { useTheme } from "./ThemeContext";
 
 export default function Credits() {
   const [count, setCount] = useState(0)
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  
+  const pageBgClass = { 
+    light: "bg-white text-black",
+    dark: "bg-gray-800 text-white",
+    game: "bg-[#0f172a] text-green-400",
+    sky: "bg-gradient-to-r from-blue-400 to-blue-600 text-blue-100",
+    candy: "bg-gradient-to-r from-pink-400 to-purple-400 text-pink-100"
+  }[theme];
 
   return (
     <div className="h-screen w-screen fixed inset-0 flex flex-col items-center justify-center bg-cover bg-center"
@@ -18,7 +28,7 @@ export default function Credits() {
             Back to Home
         </button>
 
-        <div className="h-screen flex flex-col items-center bg-white bg-opacity-80 p-10 rounded-lg shadow-lg">
+        <div className={`h-screen flex flex-col items-center p-10 rounded-lg shadow-lg ${pageBgClass}`}>
         <h1 className="text-5xl font-bold mt-16 mb-20">Credits</h1>
             <div className="text-xl">
                 <p>Developed by Check-Mates:</p>
