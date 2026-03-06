@@ -1,11 +1,14 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useNavigate } from "react-router-dom";
-import { useTheme } from "./ThemeContext";
+import { useSettings } from "./SettingsContext";
 
 export default function Settings() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("difficulty");
-  const { theme, setTheme } = useTheme();
+  const [activeTab, setActiveTab] = useState("user");
+  const { theme, setTheme } = useSettings();
+  const { difficulty, setDifficulty } = useSettings();
+  const { timerEnabled, setTimerEnabled } = useSettings();
+  const { historyEnabled, setHistoryEnabled } = useSettings();
 
   const panelBgClass = {
     light: "bg-white text-black",
@@ -72,6 +75,7 @@ export default function Settings() {
             >
               User
             </button>
+
             <button
               onClick={() => setActiveTab("difficulty")}
               className={`p-4 text-left ${
@@ -89,18 +93,26 @@ export default function Settings() {
             >
               Display
             </button>
+
+            <button
+              onClick={() => setActiveTab("gameplay")}
+              className={`p-4 text-left ${
+                activeTab === "gameplay" ? `${sidebarActiveClass} font-semibold` : `${sidebarHoverClass}`
+              }`}
+            >
+              Gameplay
+            </button>
           </div>
 
           {/* RIGHT CONTENT */}
           <div className={`w-3/4 p-8 ${panelBgClass}`}>
              {activeTab === "user" && (
               <div className="space-y-4 text-lg">
-                <h2 className="text-2xl font-semibold">User Profile</h2>
+                <h2 className="text-2xl font-semibold mb-14">User Profile</h2>
                 <p>Username: .....</p>
                 <p>Games Played: .....</p>
                 <p>Games Won: .....</p>
                 <p>Win Percentage: .....</p>
-                <p>ELO Rating: .....</p>
               </div>
             )}
 
@@ -108,28 +120,57 @@ export default function Settings() {
               <div className="space-y-4 text-lg">
                 <h2 className="text-2xl font-semibold mb-12">Difficulty Settings</h2>
 
-                <h3 className="text-2xl font-semibold">General:</h3>
+                <h3 className="text-xl font-semibold">General:</h3>
+                <p className="text-xs italic mt-2">(General Settings Simulate Chess Matches From Specific ELO Ranges)</p>
                 <div className="grid grid-cols-3 gap-4 mt-8">
                   <label className="block">
-                    <input type="radio" name="difficulty" className="mr-2" />
+                    <input 
+                    type="radio" 
+                    name="difficulty" 
+                    value="easy" 
+                    checked={difficulty === "easy"} 
+                    onChange={() => setDifficulty("easy")} 
+                    className="mr-2" 
+                    />
                     Easy
                   </label>
 
                   <label className="block">
-                    <input type="radio" name="difficulty" className="mr-2" />
+                    <input 
+                    type="radio" 
+                    name="difficulty" 
+                    value="medium" 
+                    checked={difficulty === "medium"} 
+                    onChange={() => setDifficulty("medium")} 
+                    className="mr-2" 
+                    />
                     Medium
                   </label>
 
                   <label className="block">
-                    <input type="radio" name="difficulty" className="mr-2" />
+                    <input 
+                    type="radio" 
+                    name="difficulty" 
+                    value="hard" 
+                    checked={difficulty === "hard"} 
+                    onChange={() => setDifficulty("hard")} 
+                    className="mr-2" 
+                    />
                     Hard
                   </label>
                 </div>
                 
-                <h3 className="text-2xl font-semibold mt-16">Special:</h3>
+                <h3 className="text-xl font-semibold mt-12">Special:</h3>
+                <p className="text-xs italic mt-2">(Special Settings Simulate The Playstyle Specific Players)</p>
                 <div className="grid grid-cols-2 gap-4 pl-73 mt-8">
                   <label className="block">
-                    <input type="radio" name="difficulty" className="mr-2" />
+                    <input 
+                    type="radio" 
+                    name="difficulty" 
+                    value="magnus"
+                    checked={difficulty === "magnus"} 
+                    onChange={() => setDifficulty("magnus")} 
+                    className="mr-2" />
                     Magnus Carlsen
                   </label>
                 </div>
@@ -149,7 +190,6 @@ export default function Settings() {
                     { label: "Candy Mode", value: "candy" }
                   ].map((option) => (
                     <div key={option.value} className="flex items-center mb-4">
-                      {/* Radio circle */}
                       <input
                         type="radio"
                         name="display"
@@ -157,16 +197,51 @@ export default function Settings() {
                         onChange={() => setTheme(option.value)}
                         className="form-radio"
                       />
-                      
-                      {/* Fixed-width text container */}
                       <span className="ml-3 w-32">{option.label}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
-          </div>
 
+            {activeTab === "gameplay" && (
+              <div className="space-y-4 text-lg">
+                <h2 className="text-2xl font-semibold">Gameplay Settings</h2>
+                
+                  <div className="flex items-center gap-4 mt-16 pl-76">
+                  <span className="text-xl">Enable Timer:</span>
+                  <button
+                    onClick={() => setTimerEnabled(prev => !prev)}
+                    className={`w-15 h-8 rounded-full transition-colors ${
+                      timerEnabled ? "bg-green-500" : "bg-gray-400"
+                    }`}
+                  >
+                    <div
+                      className={`h-6 w-6 bg-white rounded-full shadow-md transform transition-transform ${
+                        timerEnabled ? "translate-x-8" : "translate-x-0"
+                      }`}
+                    ></div>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-4 mt-12 pl-61">
+                  <span className="text-xl">Enable Move History:</span>
+                  <button
+                    onClick={() => setHistoryEnabled(prev => !prev)}
+                    className={`w-15 h-8 rounded-full transition-colors ${
+                      historyEnabled ? "bg-green-500" : "bg-gray-400"
+                    }`}
+                  >
+                    <div
+                      className={`h-6 w-6 bg-white rounded-full shadow-md transform transition-transform ${
+                        historyEnabled ? "translate-x-8" : "translate-x-0"
+                      }`}
+                    ></div>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
        </div>
       </div>
     </div>

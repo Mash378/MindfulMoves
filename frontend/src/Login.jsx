@@ -1,12 +1,12 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { useTheme } from "./ThemeContext";
+import { useSettings } from "./SettingsContext"
 
 export default function Login() {
     const [name, setName] = useState("");
     const [password, setPassword] = useState("");
     const navigate = useNavigate();
-    const { theme } = useTheme();
+    const { theme } = useSettings();
 
     const pageBgClass = {
         light: "bg-white text-black",

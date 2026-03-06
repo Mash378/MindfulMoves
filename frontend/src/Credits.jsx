@@ -1,11 +1,11 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom";
-import { useTheme } from "./ThemeContext";
+import { useSettings } from "./SettingsContext"
 
 export default function Credits() {
   const [count, setCount] = useState(0)
   const navigate = useNavigate();
-  const { theme } = useTheme();
+  const { theme } = useSettings();
   
   const pageBgClass = { 
     light: "bg-white text-black",
