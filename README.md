@@ -57,7 +57,7 @@ cd backend
 Create a `.env` file inside the `backend/` folder with the following contents:
 
 ```env
-DATABASE_URL=sqlite:///./db.sqlite3
+DATABASE_URL=sqlite:///./local.db
 FRONTEND_URL=http://localhost:5173
 JWT_SECRET_KEY=your-secret-key-here
 ```
