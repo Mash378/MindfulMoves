@@ -161,7 +161,7 @@ export default function Settings() {
                 </div>
                 
                 <h3 className="text-xl font-semibold mt-12">Special:</h3>
-                <p className="text-xs italic mt-2">(Special Settings Simulate The Playstyle Specific Players)</p>
+                <p className="text-xs italic mt-2">(Special Settings Simulate The Playstyle Of Specific Players)</p>
                 <div className="grid grid-cols-2 gap-4 pl-73 mt-8">
                   <label className="block">
                     <input 
