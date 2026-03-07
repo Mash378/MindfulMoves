@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom";
 import { useSettings } from "./SettingsContext"
 
-export default function Leader_Board() {
+export default function Leaderboard() {
   const [count, setCount] = useState(0)
   const navigate = useNavigate();
   const { theme } = useSettings();
@@ -29,7 +29,7 @@ export default function Leader_Board() {
         </button>
 
         <div className={`h-screen flex flex-col items-center ${pageBgClass} bg-opacity-80 p-10 rounded-lg shadow-lg`}>
-        <h1 className="text-5xl font-bold mt-16 mb-20">Leader Board</h1>
+        <h1 className="text-5xl font-bold mt-16 mb-20">Leaderboard</h1>
             <div className="text-xl">
                 <p>Top Players:</p>
                 <ol style={{ marginTop: '20px' }}>

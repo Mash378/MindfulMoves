@@ -66,7 +66,7 @@ export default function Home() {
       className={`w-40 px-6 py-3 rounded-lg transition ${buttonBgClass} ${buttonHoverClass}`}
       onClick={() => navigate("/leaderboard")}
       >
-      Leader Board
+      Leaderboard
     </button>
     <button
       className={`w-40 px-6 py-3 rounded-lg transition ${buttonBgClass} ${buttonHoverClass}`}
