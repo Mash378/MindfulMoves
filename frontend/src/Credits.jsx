@@ -41,8 +41,8 @@ export default function Credits() {
                 </ul>
                 <p  style={{ marginTop: '80px' }}>Datasets and Models Used:</p>
                 <ul style={{ marginTop: '20px' }}>
-                    <li>The model is based on GPT-2 (OpenAI).</li>
-                    <li>Game data sourced from the Lichess open database.</li>
+                    <li>The model is based on Chess GPT-4.5M</li>
+                    <li>Game data sourced from the Lichess open database</li>
                 </ul>
             </div>
         </div>
