@@ -131,7 +131,7 @@ export default function Login() {
             placeholder="Enter your password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="px-4 py-2 mb-4 rounded-lg border-2 border-gray-400 text-black w-64"
+            className="px-4 py-2 mb-4 rounded-lg border-2 border-gray-400 w-64"
           />
 
           {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
