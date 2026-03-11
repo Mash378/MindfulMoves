@@ -556,37 +556,55 @@ export default function Game() {
     navigate('/settings', { state: { from: 'game' } });
   };
 
+  const { theme } = useSettings();
+
+  const buttonBgClass = {
+    light: "bg-blue-600 text-white",
+    dark: "bg-blue-600 text-white",
+    game: "bg-[#0f172a] text-green-400",
+    sky: "bg-blue-400 text-blue-100",
+    candy: "bg-pink-400 text-pink-100"
+  }[theme];
+
+  const buttonHoverClass = {
+    light: "hover:bg-blue-700",
+    dark: "hover:bg-blue-700",
+    game: "hover:bg-gray-700",
+    sky: "hover:bg-blue-500",
+    candy: "hover:bg-pink-500"
+  }[theme];
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center">
       <div className="mb-4 flex items-center justify-center space-x-4">
         {timerEnabled && (
           <>
-            <div className="px-4 py-2 bg-blue-500 text-white rounded">
+            <div className={`px-4 py-2 ${buttonBgClass} rounded`}>
               Light: {formatTime(timer.Light)}
             </div>
-            <div className="px-4 py-2 bg-blue-500 text-white rounded">
+            <div className={`px-4 py-2 ${buttonBgClass} rounded`}>
               Dark: {formatTime(timer.Dark)}
             </div>
           </>
         )}
-        <div className="px-4 py-2 bg-blue-500 text-white rounded">
+        <div className={`px-4 py-2 ${buttonBgClass} rounded`}>
           Turn: {currentPlayer}
         </div>
         <button
           onClick={() => setShowOpponentProfile(true)}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
         >
           Opponent
         </button>
         <button
           onClick={handleSettingsClick}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
         >
           Settings
         </button>
         <button
           onClick={initializeBoard}
-          className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
         >
           New Game
         </button>
