@@ -19,7 +19,7 @@ router = APIRouter(prefix="/game", tags=["game"])
 @router.post("/new", response_model=NewGameResponse)
 def new_game(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict[str, str] = Depends(get_current_user),
 ):
     return create_game(current_user["user_id"], db)
 
@@ -29,7 +29,7 @@ def move(
     game_id: str,
     body: MakeMoveRequest,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict[str, str] = Depends(get_current_user),
 ):
     return make_move(game_id, body, current_user["user_id"], db)
 
@@ -38,6 +38,6 @@ def move(
 def game_state(
     game_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict[str, str] = Depends(get_current_user),
 ):
     return get_game_state(game_id, current_user["user_id"], db)

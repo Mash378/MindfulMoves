@@ -11,11 +11,6 @@ from src.db.models.user import User
 from src.features.game.ai.engine import get_ai_move
 
 
-# ---------------------------------------------------------------------------
-# Pydantic schemas
-# ---------------------------------------------------------------------------
-
-
 class NewGameResponse(BaseModel):
     game_id: str
     fen: str
@@ -23,14 +18,14 @@ class NewGameResponse(BaseModel):
 
 
 class MakeMoveRequest(BaseModel):
-    uci: str          # e.g. "e2e4", "e7e8q"
-    current_fen: str  # client board state — used as a sync guard
+    uci: str
+    current_fen: str
 
 
 class MakeMoveResponse(BaseModel):
     player_uci: str
     ai_uci: str | None
-    fen: str        # final board FEN after both moves (or after player if game ended)
+    fen: str
     status: str
     game_over: bool
 
@@ -40,11 +35,6 @@ class GameStateResponse(BaseModel):
     fen: str
     status: str
     move_count: int
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _resolve_status_after(board: chess.Board, player_won: bool) -> GameStatus:
@@ -65,21 +55,20 @@ def _resolve_status_after(board: chess.Board, player_won: bool) -> GameStatus:
 def _update_user_stats(user: User, result: GameStatus) -> None:
     games_played = (user.games_played or 0) + 1
     games_won = (user.games_won or 0) + (1 if result == GameStatus.white_wins else 0)
-    user.games_played = games_played
-    user.games_won = games_won
-    user.win_rate = round((games_won / games_played) * 100)
+    user.games_played = games_played  # type: ignore
+    user.games_won = games_won  # type: ignore
+    user.win_rate = round((games_won / games_played) * 100)  # type: ignore
 
     # Simple ELO update (player is always white, AI treated as fixed 400 ELO)
     player_elo = user.elo_rating or 400
     ai_elo = 400
-    outcome = 1.0 if result == GameStatus.white_wins else (0.5 if result == GameStatus.draw else 0.0)
-    expected = 1 / (1 + 10 ** ((ai_elo - player_elo) / 400))
-    user.elo_rating = max(0, player_elo + round(32 * (outcome - expected)))
-
-
-# ---------------------------------------------------------------------------
-# Controller functions
-# ---------------------------------------------------------------------------
+    outcome = (
+        1.0
+        if result == GameStatus.white_wins
+        else (0.5 if result == GameStatus.draw else 0.0)
+    )
+    expected = 1 / (1 + 10 ** ((ai_elo - player_elo) / 400))  # type: ignore
+    user.elo_rating = max(0, player_elo + round(32 * (outcome - expected)))  # type: ignore
 
 
 def create_game(user_id: str, db: Session) -> NewGameResponse:
@@ -92,24 +81,35 @@ def create_game(user_id: str, db: Session) -> NewGameResponse:
     db.add(game)
     db.commit()
     db.refresh(game)
-    return NewGameResponse(game_id=str(game.id), fen=str(game.current_fen), status=game.status.value)
+    return NewGameResponse(
+        game_id=str(game.id), fen=str(game.current_fen), status=game.status.value
+    )
 
 
-def make_move(game_id: str, body: MakeMoveRequest, user_id: str, db: Session) -> MakeMoveResponse:
+def make_move(
+    game_id: str, body: MakeMoveRequest, user_id: str, db: Session
+) -> MakeMoveResponse:
     game = db.query(Game).filter(Game.id == game_id).first()
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
 
     if str(game.user_id) != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
 
-    if game.status != GameStatus.active:
-        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Game is already over")
+    if game.status != GameStatus.active:  # type: ignore
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE, detail="Game is already over"
+        )
 
     if body.current_fen != str(game.current_fen):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail={"message": "Board out of sync", "server_fen": str(game.current_fen)},
+            detail={
+                "message": "Board out of sync",
+                "server_fen": str(game.current_fen),
+            },
         )
 
     # Validate and apply player move
@@ -117,10 +117,15 @@ def make_move(game_id: str, body: MakeMoveRequest, user_id: str, db: Session) ->
     try:
         player_move = chess.Move.from_uci(body.uci)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Malformed UCI move")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Not a UCI move",
+        )
 
     if player_move not in board.legal_moves:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Illegal move")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Illegal move"
+        )
 
     board.push(player_move)
     fen_after_player = board.fen()
@@ -157,8 +162,8 @@ def make_move(game_id: str, body: MakeMoveRequest, user_id: str, db: Session) ->
     )
     db.add(move_record)
 
-    game.current_fen = final_fen
-    game.status = new_status
+    game.current_fen = final_fen  # type: ignore
+    game.status = new_status  # type: ignore
 
     # Update user stats on game over
     if new_status != GameStatus.active:
@@ -180,7 +185,9 @@ def make_move(game_id: str, body: MakeMoveRequest, user_id: str, db: Session) ->
 def get_game_state(game_id: str, user_id: str, db: Session) -> GameStateResponse:
     game = db.query(Game).filter(Game.id == game_id).first()
     if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Game not found"
+        )
 
     if str(game.user_id) != user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
