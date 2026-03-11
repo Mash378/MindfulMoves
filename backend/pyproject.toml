@@ -12,4 +12,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "sqlalchemy>=2.0.46",
     "uvicorn>=0.41.0",
+    "python-chess>=1.999",
+    "torch>=2.10.0",
+    "transformers>=5.3.0",
 ]

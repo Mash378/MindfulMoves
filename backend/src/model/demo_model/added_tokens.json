@@ -1,0 +1,17 @@
+{
+  "<ELO:1500-1700>": 50259,
+  "<ERR:Blunder>": 50271,
+  "<ERR:Good>": 50268,
+  "<ERR:Inaccuracy>": 50269,
+  "<ERR:Mistake>": 50270,
+  "<PHASE:Endgame>": 50262,
+  "<PHASE:Middlegame>": 50261,
+  "<PHASE:Opening>": 50260,
+  "<STYLE:Aggressive>": 50264,
+  "<STYLE:Balanced>": 50267,
+  "<STYLE:Defensive>": 50266,
+  "<STYLE:Solid>": 50265,
+  "<STYLE:Tactical>": 50263,
+  "<|moves|>": 50257,
+  "<|target|>": 50258
+}
