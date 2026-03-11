@@ -86,6 +86,8 @@ Create a `.env` file inside the `frontend/` folder:
 VITE_API_URL=http://localhost:8000
 ```
 
+> Make sure the select encoding is UTF-8 with BOM: if not (in VSCode) look at the bottom right for select encoding > save with encoding > UTF-8 with BOM.
+
 Install dependencies:
 
 ```bash

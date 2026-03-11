@@ -1,14 +1,17 @@
 import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useSettings } from "./SettingsContext";
 
 export default function Settings() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState("user");
   const { theme, setTheme } = useSettings();
   const { difficulty, setDifficulty } = useSettings();
   const { timerEnabled, setTimerEnabled } = useSettings();
   const { historyEnabled, setHistoryEnabled } = useSettings();
+
+  const fromGame = location.state?.from === 'game';
 
   const panelBgClass = {
     light: "bg-white text-black",
@@ -42,19 +45,27 @@ export default function Settings() {
     candy: "hover:bg-purple-500"
   }[theme];
 
+  const handleBackNavigation = () => {
+    if (fromGame) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  };
+
   return (
     <div
       className="h-screen w-screen fixed inset-0 flex items-center justify-center bg-cover bg-center"
       style={{ backgroundImage: "url('/background.png')" }}
     >
       <button
-        onClick={() => navigate("/")}
+        onClick={handleBackNavigation}
         className="absolute top-4 right-4 px-4 py-2 bg-gray-600 text-white 
         rounded-lg hover:bg-gray-700 transition shadow-md
         flex items-center gap-2 z-10"
       >
         <span className="text-lg">←</span>
-        Back to Home
+        {fromGame ? "Back to Game" : "Back to Home"}
       </button>
 
       <div className="flex flex-col items-center">
