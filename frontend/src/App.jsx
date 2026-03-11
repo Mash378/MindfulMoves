@@ -4,7 +4,7 @@ import Home from "./Home.jsx";
 import SignUp from "./SignUp.jsx";
 import Login from "./Login.jsx";
 import Game from "./Game.jsx";
-import Leader_Board from "./Leader_Board.jsx";
+import Leaderboard from "./Leaderboard.jsx";
 import Settings from "./Settings.jsx";
 import Credits from "./Credits.jsx";
 import { SettingsProvider } from "./SettingsContext.jsx"; 
@@ -17,7 +17,7 @@ function App() {
         <Route path="/signup" element={<SignUp />} />
         <Route path="/login" element={<Login />} />
         <Route path="/game" element={<Game />} />
-        <Route path="/leaderboard" element={<Leader_Board />} />
+        <Route path="/leaderboard" element={<Leaderboard />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/credits" element={<Credits />} />
       </Routes>

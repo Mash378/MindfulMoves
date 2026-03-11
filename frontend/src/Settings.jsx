@@ -113,6 +113,19 @@ export default function Settings() {
             >
               Gameplay
             </button>
+
+            {fromGame && (
+            <button
+              onClick={() => setActiveTab("return")}
+              className={`p-4 text-left ${
+                activeTab === "return"
+                  ? `${sidebarActiveClass} font-semibold`
+                  : `${sidebarHoverClass}`
+              }`}
+            >
+              Leave Game
+            </button>
+          )}
           </div>
 
           {/* RIGHT CONTENT */}
@@ -254,6 +267,20 @@ export default function Settings() {
                 </div>
               </div>
             )}
+
+            {activeTab === "return" && fromGame && (
+            <div className="space-y-6 text-lg">
+              <h2 className="text-2xl font-semibold mb-40">Leave Game</h2>
+
+              <button
+                onClick={() => navigate("/")}
+                className="px-6 py-3 bg-gray-600 text-white rounded-lg 
+                          hover:bg-gray-700 transition shadow-md"
+              >
+                Return to Home
+              </button>
+            </div>
+          )}
           </div>
         </div>
       </div>
