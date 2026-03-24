@@ -111,7 +111,7 @@ export default function SignUp() {
       </button>
 
       <div
-        className={`flex flex-col items-center p-10 rounded-lg shadow-lg w-96 h-130 ${pageBgClass}`}
+        className={`relative flex flex-col items-center p-10 rounded-lg shadow-lg w-96 h-[520px] ${pageBgClass}`}
       >
         <h2 className="text-5xl font-bold">Sign Up Page</h2>
 
@@ -134,19 +134,19 @@ export default function SignUp() {
             className="px-4 py-2 mb-10 rounded-lg border-2 border-gray-400 w-64"
           />
 
-          {error && <p className="absolute bottom-72 left-1/2 transform -translate-x-1/2 text-red-600 text-sm mb-4">{error}</p>}
+          {error && <p className="absolute bottom-44 left-1/2 transform -translate-x-1/2 text-red-600 text-sm mb-4">{error}</p>}
 
           <button
             type="submit"
             disabled={loading}
-            className={`absolute bottom-56 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg transition ${buttonBgClass} ${buttonHoverClass} disabled:opacity-50`}
+            className={`absolute bottom-32 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg transition ${buttonBgClass} ${buttonHoverClass} disabled:opacity-50`}
           >
             {loading ? "Signing up..." : "Submit"}
           </button>
         </form>
         <button
           type="button"
-          className={`absolute bottom-38 left-1/2 transform -translate-x-1/2 mt-4 px-6 py-3 text-2xl transition ${textBgClass} ${textHoverClass}`}
+          className={`absolute bottom-16 left-1/2 transform -translate-x-1/2 mt-4 px-6 py-3 text-2xl transition ${textBgClass} ${textHoverClass}`}
           onClick={() => navigate("/login")}
         >
           Login
