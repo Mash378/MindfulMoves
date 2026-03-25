@@ -57,7 +57,7 @@ export default function Home() {
       <h1 className="text-7xl text-black font-bold font-serif text-shadow-lg mb-42">MindfulMoves</h1>
       <button
       className={`w-80 px-8 py-4 text-2xl rounded-lg transition ${buttonBgClass} ${buttonHoverClass}` }
-      onClick={() => navigate("/signup")}
+      onClick={() => navigate("/login")}
       >
       Start Game
     </button>

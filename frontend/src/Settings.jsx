@@ -10,8 +10,18 @@ export default function Settings() {
   const { difficulty, setDifficulty } = useSettings();
   const { timerEnabled, setTimerEnabled } = useSettings();
   const { historyEnabled, setHistoryEnabled } = useSettings();
+  const { changeUsername, setChangeUsername } = useSettings();
+  const { changePassword, setChangePassword } = useSettings();
 
-  const fromGame = location.state?.from === 'game';
+  const fromGame = location.state?.from === 'game' || location.state?.fromGame === true;
+
+    useEffect(() => {
+    if (location.state?.activeTab) {
+      setActiveTab(location.state.activeTab);
+    } else if (!fromGame) {
+      setActiveTab("difficulty");
+    }
+  }, [location, fromGame]);
 
   const panelBgClass = {
     light: "bg-white text-black",
@@ -41,13 +51,29 @@ export default function Settings() {
     light: "hover:bg-gray-200",
     dark: "hover:bg-gray-700",
     game: "hover:bg-gray-700",
-    sky: "hover:bg-blue-700",
+    sky: "hover:bg-blue-600",
     candy: "hover:bg-purple-500"
+  }[theme];
+
+  const buttonBgClass = {
+    light: "bg-blue-600 text-white",
+    dark: "bg-blue-600 text-white",
+    game: "bg-gray-600 text-green-400",
+    sky: "bg-blue-400 text-blue-100",
+    candy: "bg-pink-400 text-pink-100"
+  }[theme];
+
+  const buttonHoverClass = {
+    light: "hover:bg-blue-700",
+    dark: "hover:bg-blue-700",
+    game: "hover:bg-gray-700",
+    sky: "hover:bg-blue-500",
+    candy: "hover:bg-pink-500"
   }[theme];
 
   const handleBackNavigation = () => {
     if (fromGame) {
-      navigate(-1);
+      navigate("/game");
     } else {
       navigate("/");
     }
@@ -78,6 +104,7 @@ export default function Settings() {
 
           {/* LEFT SIDEBAR */}
           <div className={`w-1/4 border-r flex flex-col ${sidebarBgClass}`}>
+          {fromGame && (
             <button
               onClick={() => setActiveTab("user")}
               className={`p-4 text-left ${
@@ -86,6 +113,7 @@ export default function Settings() {
             >
               User
             </button>
+          )}
 
             <button
               onClick={() => setActiveTab("difficulty")}
@@ -97,22 +125,33 @@ export default function Settings() {
             </button>
 
             <button
-              onClick={() => setActiveTab("display")}
+              onClick={() => setActiveTab("theme")}
               className={`p-4 text-left ${
-                activeTab === "display" ? `${sidebarActiveClass} font-semibold` : `${sidebarHoverClass}`
+                activeTab === "theme" ? `${sidebarActiveClass} font-semibold` : `${sidebarHoverClass}`
               }`}
             >
-              Display
+              Theme
             </button>
 
             <button
-              onClick={() => setActiveTab("gameplay")}
+              onClick={() => setActiveTab("game display")}
               className={`p-4 text-left ${
-                activeTab === "gameplay" ? `${sidebarActiveClass} font-semibold` : `${sidebarHoverClass}`
+                activeTab === "game display" ? `${sidebarActiveClass} font-semibold` : `${sidebarHoverClass}`
               }`}
             >
-              Gameplay
+              Game Display
             </button>
+
+          {fromGame && (
+            <button
+              onClick={() => setActiveTab("account")}
+              className={`p-4 text-left ${
+                activeTab === "account" ? `${sidebarActiveClass} font-semibold` : `${sidebarHoverClass}`
+              }`}
+            >
+              Account
+            </button>
+          )}
 
             {fromGame && (
             <button
@@ -133,10 +172,10 @@ export default function Settings() {
              {activeTab === "user" && (
               <div className="space-y-4 text-lg">
                 <h2 className="text-2xl font-semibold mb-14">User Profile</h2>
-                <p>Username: .....</p>
-                <p>Games Played: .....</p>
-                <p>Games Won: .....</p>
-                <p>Win Percentage: .....</p>
+                <p>Username: {localStorage.getItem("playerName")}</p>
+                <p>Games Played: {localStorage.getItem("gamesPlayed") || 0}</p>
+                <p>Games Won: {localStorage.getItem("gamesWon") || 0}</p>
+                <p>Win Percentage: {localStorage.getItem("gamesPlayed") > 0 ? ((localStorage.getItem("gamesWon") || 0) / localStorage.getItem("gamesPlayed") * 100).toFixed(2) : 0}%</p>
               </div>
             )}
 
@@ -156,7 +195,7 @@ export default function Settings() {
                     onChange={() => setDifficulty("easy")} 
                     className="mr-2" 
                     />
-                    Easy
+                    Easy <text className="text-xs mt-2">(ELO 800-1200)</text>
                   </label>
 
                   <label className="block">
@@ -168,7 +207,7 @@ export default function Settings() {
                     onChange={() => setDifficulty("medium")} 
                     className="mr-2" 
                     />
-                    Medium
+                    Medium <text className="text-xs mt-2">(ELO 1200-1600)</text>
                   </label>
 
                   <label className="block">
@@ -180,12 +219,12 @@ export default function Settings() {
                     onChange={() => setDifficulty("hard")} 
                     className="mr-2" 
                     />
-                    Hard
+                    Hard <text className="text-xs mt-2">(ELO 1600-2000)</text>
                   </label>
                 </div>
                 
                 <h3 className="text-xl font-semibold mt-12">Special:</h3>
-                <p className="text-xs italic mt-2">(Special Settings Simulate The Playstyle Specific Players)</p>
+                <p className="text-xs italic mt-2">(Special Settings Simulate The Playstyle Of Specific Players)</p>
                 <div className="grid grid-cols-2 gap-4 pl-73 mt-8">
                   <label className="block">
                     <input 
@@ -201,9 +240,9 @@ export default function Settings() {
               </div>
             )}
 
-            {activeTab === "display" && (
+            {activeTab === "theme" && (
               <div className="space-y-4 text-lg">
-                <h2 className="text-2xl font-semibold mb-12">Display Settings</h2>
+                <h2 className="text-2xl font-semibold mb-12">Theme Settings</h2>
 
                 <div className="flex flex-col mt-8 gap-6 pl-76">
                   {[
@@ -228,9 +267,9 @@ export default function Settings() {
               </div>
             )}
 
-            {activeTab === "gameplay" && (
+            {activeTab === "game display" && (
               <div className="space-y-6 text-lg">
-                <h2 className="text-2xl font-semibold mb-16">Gameplay Settings</h2>
+                <h2 className="text-2xl font-semibold mb-16">Game Display Settings</h2>
 
                 <div className="flex flex-col gap-6">
                   <div className="flex items-center">
@@ -268,10 +307,40 @@ export default function Settings() {
               </div>
             )}
 
+            {activeTab === "account" && (
+              <div className="space-y-4 text-lg">
+                <h2 className="text-2xl font-semibold mb-20">Account Settings</h2>
+                <button
+                  onClick={() => {setChangeUsername(true); navigate("/login", { state: { fromGame: fromGame }})}}
+                  className={`px-6 py-3 ${buttonBgClass} rounded-lg 
+                            ${buttonHoverClass} transition shadow-md`}
+                >
+                  Change Username
+                </button>
+                <div className="flex items-center justify-center mt-10">
+                <button
+                  onClick={() => {setChangePassword(true); navigate("/login", { state: { fromGame: fromGame }})}}
+                  className={`px-6 py-3 ${buttonBgClass} rounded-lg 
+                            ${buttonHoverClass} transition shadow-md`} 
+                >
+                  Change Password
+                </button>
+                </div>
+              </div>
+            )}
+
             {activeTab === "return" && fromGame && (
             <div className="space-y-6 text-lg">
-              <h2 className="text-2xl font-semibold mb-40">Leave Game</h2>
+              <h2 className="text-2xl font-semibold mb-20">Leave Game</h2>
 
+              <button
+                onClick={() => navigate("/game")}
+                className="px-6 py-3 bg-gray-600 text-white rounded-lg 
+                          hover:bg-gray-700 transition shadow-md"
+              >
+                Back to Game
+              </button>
+              <div className="flex items-center justify-center mt-10">
               <button
                 onClick={() => navigate("/")}
                 className="px-6 py-3 bg-gray-600 text-white rounded-lg 
@@ -279,6 +348,7 @@ export default function Settings() {
               >
                 Return to Home
               </button>
+              </div>
             </div>
           )}
           </div>

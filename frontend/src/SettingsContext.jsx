@@ -22,6 +22,16 @@ export function SettingsProvider({ children }) {
     return saved !== null ? JSON.parse(saved) : true
   })
 
+  const [changeUsername, setChangeUsername] = useState(() => {
+    const saved = localStorage.getItem("changeUsername")
+    return saved !== null ? JSON.parse(saved) : false
+  })
+
+  const [changePassword, setChangePassword] = useState(() => {
+    const saved = localStorage.getItem("changePassword")
+    return saved !== null ? JSON.parse(saved) : false
+  })
+
   // save settings
   useEffect(() => {
     localStorage.setItem("theme", theme)
@@ -49,6 +59,14 @@ export function SettingsProvider({ children }) {
     localStorage.setItem("historyEnabled", JSON.stringify(historyEnabled))
   }, [historyEnabled])
 
+  useEffect(() => {
+    localStorage.setItem("changeUsername", JSON.stringify(changeUsername))
+  }, [changeUsername])
+
+  useEffect(() => {
+    localStorage.setItem("changePassword", JSON.stringify(changePassword))
+  }, [changePassword])
+
   return (
     <SettingsContext.Provider
       value={{
@@ -59,7 +77,12 @@ export function SettingsProvider({ children }) {
         timerEnabled,
         setTimerEnabled,
         historyEnabled,
-        setHistoryEnabled
+        setHistoryEnabled,
+        changeUsername,
+        setChangeUsername,
+        changePassword,
+        setChangePassword
+
       }}
     >
       {children}
