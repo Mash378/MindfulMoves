@@ -11,30 +11,29 @@ export default function Game() {
   const [gameStatus, setGameStatus] = useState("playing");
   const [moveHistory, setMoveHistory] = useState([]);
   const [showOpponentProfile, setShowOpponentProfile] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState("user");
+  const [lastMove, setLastMove] = useState(null);
   const [timer, setTimer] = useState({
     Light: 600,
-    Dark: 600,
     active: false,
     startTime: null
   });
   const navigate = useNavigate();
   
-  const { timerEnabled, historyEnabled } = useSettings();
-
-  const saveGameState = () => {
-    const gameState = {
-      board,
-      currentPlayer,
-      gameStatus,
-      moveHistory,
-      timer,
-      playerName
-    };
-    localStorage.setItem('gameState', JSON.stringify(gameState));
-  };
+  const { timerEnabled, historyEnabled, theme, setTheme, difficulty, setDifficulty } = useSettings();
 
   useEffect(() => {
     const savedState = localStorage.getItem('gameState');
+    const name = localStorage.getItem("playerName");
+    
+    if (!name) {
+      navigate("/signup");
+      return;
+    }
+    
+    setPlayerName(name);
+    
     if (savedState) {
       const {
         board: savedBoard,
@@ -42,7 +41,8 @@ export default function Game() {
         gameStatus: savedStatus,
         moveHistory: savedHistory,
         timer: savedTimer,
-        playerName: savedName
+        playerName: savedName,
+        lastMove: savedLastMove
       } = JSON.parse(savedState);
       
       setBoard(savedBoard);
@@ -51,28 +51,28 @@ export default function Game() {
       setMoveHistory(savedHistory);
       setTimer(savedTimer);
       setPlayerName(savedName);
+      setLastMove(savedLastMove);
       
       localStorage.removeItem('gameState');
-    }
-  }, []);
-
-  const opponent = {
-    name: null,
-    difficulty: null,
-    elo: null,
-    gamesPlayed: null,
-    winRate: null
-  };
-
-  useEffect(() => {
-    const name = localStorage.getItem("playerName");
-    if (!name) {
-      navigate("/signup");
     } else {
-      setPlayerName(name);
       initializeBoard();
     }
   }, [navigate]);
+
+  useEffect(() => {
+    if (board.length > 0) {
+      const gameState = {
+        board,
+        currentPlayer,
+        gameStatus,
+        moveHistory,
+        timer,
+        playerName,
+        lastMove
+      };
+      localStorage.setItem('gameState', JSON.stringify(gameState));
+    }
+  }, [board, currentPlayer, gameStatus, moveHistory, timer, playerName, lastMove]);
 
   useEffect(() => {
     let interval;
@@ -81,10 +81,10 @@ export default function Game() {
         setTimer(prev => {
           const newTime = {
             ...prev,
-            [currentPlayer]: Math.max(0, prev[currentPlayer] - 1)
+            Light: Math.max(0, prev.Light - 1)
           };
           
-          if (newTime[currentPlayer] === 0) {
+          if (newTime.Light === 0) {
             setGameStatus('timeout');
             clearInterval(interval);
           }
@@ -94,7 +94,7 @@ export default function Game() {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [timer.active, currentPlayer, gameStatus, timerEnabled]);
+  }, [timer.active, gameStatus, timerEnabled]);
 
   const initializeBoard = () => {
     const initialBoard = [
@@ -112,9 +112,9 @@ export default function Game() {
     setSelectedPiece(null);
     setValidMoves([]);
     setMoveHistory([]);
+    setLastMove(null);
     setTimer({
       Light: 600,
-      Dark: 600,
       active: false,
       startTime: null
     });
@@ -396,75 +396,88 @@ export default function Game() {
   };
 
   const isKingInCheck = (color, currentBoard) => {
-  let kingRow, kingCol;
+    let kingRow, kingCol;
 
-  for (let i = 0; i < 8; i++) {
-    for (let j = 0; j < 8; j++) {
-      const piece = currentBoard[i][j];
-      if (piece === `${color}King`) {
-        kingRow = i;
-        kingCol = j;
-        break;
-      }
-    }
-  }
-
-  const opponentColor = color === 'Light' ? 'Dark' : 'Light';
-
-  for (let i = 0; i < 8; i++) {
-    for (let j = 0; j < 8; j++) {
-      const piece = currentBoard[i][j];
-
-      if (piece && getPieceColor(piece) === opponentColor) {
-        if (canPieceAttackSquare(i, j, kingRow, kingCol, piece, currentBoard)) {
-          return true;
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) {
+        const piece = currentBoard[i][j];
+        if (piece === `${color}King`) {
+          kingRow = i;
+          kingCol = j;
+          break;
         }
       }
     }
-  }
 
-  return false;
-};
+    const opponentColor = color === 'Light' ? 'Dark' : 'Light';
 
-  const isKingInCheckmate = (color, currentBoard) => {
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) {
+        const piece = currentBoard[i][j];
 
-  if (!isKingInCheck(color, currentBoard)) {
-    return false;
-  }
-
-  for (let r = 0; r < 8; r++) {
-    for (let c = 0; c < 8; c++) {
-
-      const piece = currentBoard[r][c];
-
-      if (piece && getPieceColor(piece) === color) {
-
-        for (let r2 = 0; r2 < 8; r2++) {
-          for (let c2 = 0; c2 < 8; c2++) {
-
-            if (isValidMove(r, c, r2, c2, piece)) {
-
-              const testBoard = currentBoard.map(row => [...row]);
-
-              testBoard[r2][c2] = piece;
-              testBoard[r][c] = "";
-
-              if (!isKingInCheck(color, testBoard)) {
-                return false;
-              }
-
-            }
-
+        if (piece && getPieceColor(piece) === opponentColor) {
+          if (canPieceAttackSquare(i, j, kingRow, kingCol, piece, currentBoard)) {
+            return true;
           }
         }
-
       }
-
     }
-  }
 
-  return true;
-};
+    return false;
+  };
+
+  const isKingInCheckmate = (color, currentBoard) => {
+    if (!isKingInCheck(color, currentBoard)) {
+      return false;
+    }
+
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const piece = currentBoard[r][c];
+
+        if (piece && getPieceColor(piece) === color) {
+          for (let r2 = 0; r2 < 8; r2++) {
+            for (let c2 = 0; c2 < 8; c2++) {
+              if (isValidMove(r, c, r2, c2, piece)) {
+                const testBoard = currentBoard.map(row => [...row]);
+                testBoard[r2][c2] = piece;
+                testBoard[r][c] = "";
+
+                if (!isKingInCheck(color, testBoard)) {
+                  return false;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return true;
+  };
+
+  const undoMove = () => {
+    if (moveHistory.length === 0) return;
+    
+    const lastMoveData = moveHistory[moveHistory.length - 1];
+    const newBoard = board.map(row => [...row]);
+    
+    newBoard[lastMoveData.from[0]][lastMoveData.from[1]] = lastMoveData.piece;
+    newBoard[lastMoveData.to[0]][lastMoveData.to[1]] = lastMoveData.captured || "";
+    
+    setBoard(newBoard);
+    setMoveHistory(prev => prev.slice(0, -1));
+    setCurrentPlayer(lastMoveData.player);
+    setLastMove(null);
+    setGameStatus("playing");
+    
+    if (timerEnabled) {
+      setTimer(prev => ({
+        ...prev,
+        active: false
+      }));
+    }
+  };
 
   const handleSquareClick = (row, col) => {
     const piece = board[row][col];
@@ -489,74 +502,85 @@ export default function Game() {
   };
 
   const movePiece = (startRow, startCol, endRow, endCol) => {
-
-  if (!timer.active && timerEnabled) {
-    setTimer(prev => ({ ...prev, active: true }));
-  }
-
-  const newBoard = board.map(row => [...row]);
-
-  const movingPiece = newBoard[startRow][startCol];
-  const capturedPiece = newBoard[endRow][endCol];
-
-  if (historyEnabled) {
-    const notation = getChessNotation(
-      movingPiece,
-      startRow,
-      startCol,
-      endRow,
-      endCol,
-      capturedPiece
-    );
-
-    setMoveHistory(prev => [
-      ...prev,
-      {
-        player: currentPlayer,
-        notation,
-        piece: movingPiece,
-        from: [startRow, startCol],
-        to: [endRow, endCol],
-        captured: capturedPiece
-      }
-    ]);
-  }
-
-  newBoard[endRow][endCol] = movingPiece;
-  newBoard[startRow][startCol] = "";
-
-  if (getPieceType(movingPiece) === "Pawn") {
-    if (
-      (currentPlayer === "Light" && endRow === 0) ||
-      (currentPlayer === "Dark" && endRow === 7)
-    ) {
-      newBoard[endRow][endCol] = `${currentPlayer}Queen`;
+    if (!timer.active && timerEnabled) {
+      setTimer(prev => ({ ...prev, active: true }));
     }
-  }
 
-  setBoard(newBoard);
+    const newBoard = board.map(row => [...row]);
 
-  const nextPlayer = currentPlayer === "Light" ? "Dark" : "Light";
+    const movingPiece = newBoard[startRow][startCol];
+    const capturedPiece = newBoard[endRow][endCol];
 
-  if (isKingInCheckmate(nextPlayer, newBoard)) {
-    setGameStatus("checkmate");
-  } 
-  else if (isKingInCheck(nextPlayer, newBoard)) {
-    setGameStatus("check");
-  } 
-  else {
-    setGameStatus("playing");
-  }
+    if (historyEnabled) {
+      const notation = getChessNotation(
+        movingPiece,
+        startRow,
+        startCol,
+        endRow,
+        endCol,
+        capturedPiece
+      );
 
-  setCurrentPlayer(nextPlayer);
-};
+      setMoveHistory(prev => [
+        ...prev,
+        {
+          player: currentPlayer,
+          notation,
+          piece: movingPiece,
+          from: [startRow, startCol],
+          to: [endRow, endCol],
+          captured: capturedPiece
+        }
+      ]);
+    }
 
-  const handleSettingsClick = () => {
-    saveGameState();
-    navigate('/settings', { state: { from: 'game' } });
+    setLastMove({ from: [startRow, startCol], to: [endRow, endCol] });
+
+    newBoard[endRow][endCol] = movingPiece;
+    newBoard[startRow][startCol] = "";
+
+    if (getPieceType(movingPiece) === "Pawn") {
+      if (
+        (currentPlayer === "Light" && endRow === 0) ||
+        (currentPlayer === "Dark" && endRow === 7)
+      ) {
+        newBoard[endRow][endCol] = `${currentPlayer}Queen`;
+      }
+    }
+
+    setBoard(newBoard);
+
+    const nextPlayer = currentPlayer === "Light" ? "Dark" : "Light";
+
+    if (isKingInCheckmate(nextPlayer, newBoard)) {
+      setGameStatus("checkmate");
+    } 
+    else if (isKingInCheck(nextPlayer, newBoard)) {
+      setGameStatus("check");
+    } 
+    else {
+      setGameStatus("playing");
+    }
+
+    setCurrentPlayer(nextPlayer);
   };
 
-  const { theme } = useSettings();
+  const handleSettingsClick = () => {
+    setShowSettings(true);
+  };
+
+  const handleReturnHome = () => {
+    localStorage.removeItem('gameState');
+    navigate('/');
+  };
+
+  const handleNewGame = () => {
+    localStorage.removeItem('gameState');
+    initializeBoard();
+    setSelectedPiece(null);
+    setValidMoves([]);
+    setGameStatus("playing");
+  };
 
   const buttonBgClass = {
     light: "bg-blue-600 text-white",
@@ -574,27 +598,62 @@ export default function Game() {
     candy: "hover:bg-pink-500"
   }[theme];
 
+  const modalBgClass = {
+    light: "bg-white text-black",
+    dark: "bg-gray-800 text-white",
+    game: "bg-[#0f172a] text-green-400",
+    sky: "bg-gradient-to-r from-blue-400 to-blue-600 text-blue-100",
+    candy: "bg-gradient-to-r from-pink-400 to-purple-400 text-pink-100"
+  }[theme];
+
+  const modalSidebarClass = {
+    light: "bg-gray-100",
+    dark: "bg-gray-900",
+    game: "bg-gray-900",
+    sky: "bg-gradient-to-b from-blue-400 to-blue-600",
+    candy: "bg-gradient-to-b from-pink-400 to-purple-400"
+  }[theme];
+
+  const modalSidebarActiveClass = {
+    light: "bg-gray-300",
+    dark: "bg-gray-600",
+    game: "bg-gray-600",
+    sky: "bg-blue-700",
+    candy: "bg-purple-700"
+  }[theme];
+
+  const modalSidebarHoverClass = {
+    light: "hover:bg-gray-200",
+    dark: "hover:bg-gray-700",
+    game: "hover:bg-gray-700",
+    sky: "hover:bg-blue-700",
+    candy: "hover:bg-purple-500"
+  }[theme];
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center">
       <div className="mb-4 flex items-center justify-center space-x-4">
         {timerEnabled && (
-          <>
-            <div className={`px-4 py-2 ${buttonBgClass} rounded`}>
-              Light: {formatTime(timer.Light)}
-            </div>
-            <div className={`px-4 py-2 ${buttonBgClass} rounded`}>
-              Dark: {formatTime(timer.Dark)}
-            </div>
-          </>
+          <div className={`px-4 py-2 ${buttonBgClass} rounded`}>
+            {"User"}: {formatTime(timer.Light)}
+          </div>
         )}
-        <div className={`px-4 py-2 ${buttonBgClass} rounded`}>
-          Turn: {currentPlayer}
-        </div>
         <button
           onClick={() => setShowOpponentProfile(true)}
           className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
         >
           Opponent
+        </button>
+        <button
+          onClick={undoMove}
+          disabled={moveHistory.length === 0}
+          className={`px-4 py-2 rounded ${
+            moveHistory.length === 0 
+              ? 'bg-gray-400 cursor-not-allowed' 
+              : `${buttonBgClass} ${buttonHoverClass}`
+          }`}
+        >
+          Undo
         </button>
         <button
           onClick={handleSettingsClick}
@@ -603,7 +662,13 @@ export default function Game() {
           Settings
         </button>
         <button
-          onClick={initializeBoard}
+          onClick={handleReturnHome}
+          className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
+        >
+          Return to Home
+        </button>
+        <button
+          onClick={handleNewGame}
           className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
         >
           New Game
@@ -615,7 +680,9 @@ export default function Game() {
           {board.map((row, rowIndex) => (
             row.map((piece, colIndex) => {
               const isDarkSquare = (rowIndex + colIndex) % 2 === 1;
-              const isValidMove = validMoves.some(([r, c]) => r === rowIndex && c === colIndex);
+              const isValidMoveSquare = validMoves.some(([r, c]) => r === rowIndex && c === colIndex);
+              const isLastMoveFrom = lastMove && lastMove.from[0] === rowIndex && lastMove.from[1] === colIndex;
+              const isLastMoveTo = lastMove && lastMove.to[0] === rowIndex && lastMove.to[1] === colIndex;
               const imagePath = getPieceImage(piece);
               
               return (
@@ -625,13 +692,14 @@ export default function Game() {
                   className={`
                     w-16 h-16 flex items-center justify-center cursor-pointer relative
                     ${isDarkSquare ? 'bg-gray-600' : 'bg-gray-300'}
+                    ${(isLastMoveFrom || isLastMoveTo) ? 'ring-2 ring-yellow-400 ring-inset' : ''}
                     hover:opacity-75 transition-opacity
                   `}
                 >
-                  {isValidMove && piece && (
+                  {isValidMoveSquare && piece && (
                     <div className="absolute inset-0 border-4 border-red-500 pointer-events-none"></div>
                   )}
-                  {isValidMove && !piece && (
+                  {isValidMoveSquare && !piece && (
                     <div className="absolute inset-0 flex items-center justify-center">
                       <div className="w-4 h-4 bg-green-500 bg-opacity-50 rounded-full"></div>
                     </div>
@@ -656,19 +724,23 @@ export default function Game() {
               {moveHistory.length === 0 ? (
                 <p className="text-gray-400 text-center">No moves yet</p>
               ) : (
-                <div className="space-y-1">
-                  {moveHistory.map((move, index) => (
-                    <div 
-                      key={index}
-                      className={`p-2 rounded ${move.player === 'Light' ? 'bg-gray-700' : 'bg-gray-600'} text-white`}
-                    >
-                      <span className="font-mono">
-                        {Math.floor(index / 2) + 1}.
-                        {index % 2 === 0 ? ' ' : '... '}
-                        {move.notation}
-                      </span>
-                    </div>
-                  ))}
+                <div className="space-y-2">
+                  {Array.from({ length: Math.ceil(moveHistory.length / 2) }).map((_, moveNumber) => {
+                    const whiteMove = moveHistory[moveNumber * 2];
+                    const blackMove = moveHistory[moveNumber * 2 + 1];
+                    
+                    return (
+                      <div key={moveNumber} className="flex justify-between items-center p-2 bg-gray-700 rounded text-white">
+                        <span className="font-mono w-8 text-gray-400">{moveNumber + 1}.</span>
+                        <span className="font-mono flex-1 ml-2">
+                          {whiteMove ? whiteMove.notation : ''}
+                        </span>
+                        <span className="font-mono flex-1 ml-4">
+                          {blackMove ? blackMove.notation : ''}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -679,6 +751,217 @@ export default function Game() {
         )}
       </div>
 
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className={`rounded-lg shadow-xl w-[70vw] h-[65vh] flex flex-col ${modalBgClass}`}>
+            <div className="flex justify-between items-center p-4 border-b border-gray-600">
+              <h2 className="text-2xl font-bold">Settings</h2>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-2xl hover:text-gray-300"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="flex flex-1 overflow-hidden">
+              {/* Settings Sidebar */}
+              <div className={`w-1/4 border-r flex flex-col ${modalSidebarClass}`}>
+                <button
+                  onClick={() => setSettingsTab("user")}
+                  className={`p-4 text-left transition ${
+                    settingsTab === "user" 
+                      ? `${modalSidebarActiveClass} font-semibold` 
+                      : `${modalSidebarHoverClass}`
+                  }`}
+                >
+                  User
+                </button>
+                <button
+                  onClick={() => setSettingsTab("difficulty")}
+                  className={`p-4 text-left transition ${
+                    settingsTab === "difficulty" 
+                      ? `${modalSidebarActiveClass} font-semibold` 
+                      : `${modalSidebarHoverClass}`
+                  }`}
+                >
+                  Difficulty
+                </button>
+                <button
+                  onClick={() => setSettingsTab("display")}
+                  className={`p-4 text-left transition ${
+                    settingsTab === "display" 
+                      ? `${modalSidebarActiveClass} font-semibold` 
+                      : `${modalSidebarHoverClass}`
+                  }`}
+                >
+                  Display
+                </button>
+                <button
+                  onClick={() => setSettingsTab("gameplay")}
+                  className={`p-4 text-left transition ${
+                    settingsTab === "gameplay" 
+                      ? `${modalSidebarActiveClass} font-semibold` 
+                      : `${modalSidebarHoverClass}`
+                  }`}
+                >
+                  Gameplay
+                </button>
+              </div>
+
+              {/* Settings Content */}
+              <div className="flex-1 p-6 overflow-y-auto">
+                {/* User Tab */}
+                {settingsTab === "user" && (
+                  <div className="space-y-4">
+                    <h3 className="text-2xl font-semibold mb-6">User Profile</h3>
+                    <div className="space-y-3">
+                      <p className="text-lg">Username: <span className="font-mono">{playerName}</span></p>
+                      <p className="text-lg">Games Played: <span className="font-mono">—</span></p>
+                      <p className="text-lg">Games Won: <span className="font-mono">—</span></p>
+                      <p className="text-lg">Win Percentage: <span className="font-mono">—</span></p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Difficulty Tab */}
+                {settingsTab === "difficulty" && (
+                  <div className="space-y-6">
+                    <h3 className="text-2xl font-semibold mb-6">Difficulty Settings</h3>
+                    
+                    <div>
+                      <h4 className="text-xl font-semibold mb-3">General:</h4>
+                      <p className="text-xs italic mb-4">(General Settings Simulate Chess Matches From Specific ELO Ranges)</p>
+                      <div className="space-y-2">
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="difficulty"
+                            value="easy"
+                            checked={difficulty === "easy"}
+                            onChange={() => setDifficulty("easy")}
+                            className="mr-3"
+                          />
+                          Easy
+                        </label>
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="difficulty"
+                            value="medium"
+                            checked={difficulty === "medium"}
+                            onChange={() => setDifficulty("medium")}
+                            className="mr-3"
+                          />
+                          Medium
+                        </label>
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="difficulty"
+                            value="hard"
+                            checked={difficulty === "hard"}
+                            onChange={() => setDifficulty("hard")}
+                            className="mr-3"
+                          />
+                          Hard
+                        </label>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-8">
+                      <h4 className="text-xl font-semibold mb-3">Special:</h4>
+                      <p className="text-xs italic mb-4">(Special Settings Simulate The Playstyle Specific Players)</p>
+                      <div className="space-y-2">
+                        <label className="flex items-center">
+                          <input
+                            type="radio"
+                            name="difficulty"
+                            value="magnus"
+                            checked={difficulty === "magnus"}
+                            onChange={() => setDifficulty("magnus")}
+                            className="mr-3"
+                          />
+                          Magnus Carlsen
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Display Tab */}
+                {settingsTab === "display" && (
+                  <div className="space-y-4">
+                    <h3 className="text-2xl font-semibold mb-6">Display Settings</h3>
+                    <div className="space-y-3">
+                      {[
+                        { label: "Light Mode", value: "light" },
+                        { label: "Dark Mode", value: "dark" },
+                        { label: "Game Mode", value: "game" },
+                        { label: "Sky Mode", value: "sky" },
+                        { label: "Candy Mode", value: "candy" }
+                      ].map((option) => (
+                        <label key={option.value} className="flex items-center">
+                          <input
+                            type="radio"
+                            name="theme"
+                            checked={theme === option.value}
+                            onChange={() => setTheme(option.value)}
+                            className="mr-3"
+                          />
+                          {option.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Gameplay Tab */}
+                {settingsTab === "gameplay" && (
+                  <div className="space-y-6">
+                    <h3 className="text-2xl font-semibold mb-6">Gameplay Settings</h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-lg">Enable Timer:</span>
+                        <button
+                          onClick={() => setTimerEnabled(prev => !prev)}
+                          className={`relative w-14 h-7 rounded-full transition-colors ${
+                            timerEnabled ? "bg-green-500" : "bg-gray-400"
+                          }`}
+                        >
+                          <div
+                            className={`absolute h-5 w-5 bg-white rounded-full shadow-md transform transition-transform top-1 ${
+                              timerEnabled ? "translate-x-8" : "translate-x-1"
+                            }`}
+                          ></div>
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-lg">Enable Move History:</span>
+                        <button
+                          onClick={() => setHistoryEnabled(prev => !prev)}
+                          className={`relative w-14 h-7 rounded-full transition-colors ${
+                            historyEnabled ? "bg-green-500" : "bg-gray-400"
+                          }`}
+                        >
+                          <div
+                            className={`absolute h-5 w-5 bg-white rounded-full shadow-md transform transition-transform top-1 ${
+                              historyEnabled ? "translate-x-8" : "translate-x-1"
+                            }`}
+                          ></div>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Opponent Profile Modal */}
       {showOpponentProfile && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
