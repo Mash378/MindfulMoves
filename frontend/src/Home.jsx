@@ -73,7 +73,7 @@ export default function Home() {
                 className={`px-4 py-2 rounded-lg transition ${
                   theme === 'game' 
                     ? 'bg-gray-600 hover:bg-gray-700 text-white'
-                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+                    : `${buttonBgClass} ${buttonHoverClass}`
                 }`}
               >
                 Login
