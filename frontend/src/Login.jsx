@@ -13,7 +13,7 @@ export default function Login() {
   
   const navigate = useNavigate();
   const location = useLocation();
-  const { theme, changeUsername, setChangeUsername, changePassword, setChangePassword } = useSettings();
+  const { theme, changeUsername, setChangeUsername, changePassword, setChangePassword, setIsLoggedIn, setUsername } = useSettings();
 
   // Check if we came from settings (and whether it was from game or not)
   const fromGame = location.state?.fromGame === true;
@@ -98,9 +98,15 @@ export default function Login() {
         return;
       }
 
+      // Store in localStorage
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("playerName", name);
-      navigate("/game");
+      
+      // Update React state
+      setIsLoggedIn(true);
+      setUsername(name);
+      
+      navigate("/");
     } catch (err) {
       clearTimeout(timeout);
       setError(
@@ -151,7 +157,10 @@ export default function Login() {
         return;
       }
 
+      // Update localStorage and React state with new username
       localStorage.setItem("playerName", newValue);
+      setUsername(newValue);
+      
       // Navigate back to settings preserving the fromGame state
       navigate("/settings", { state: { activeTab: "account", fromGame: fromGame } });
     } catch (err) {
@@ -174,10 +183,6 @@ export default function Login() {
     }
     if (newValue !== confirmValue) {
       setError("Passwords do not match");
-      return;
-    }
-    if (newValue.length < 6) {
-      setError("Password must be at least 6 characters");
       return;
     }
     if (!password.trim()) {
@@ -256,7 +261,6 @@ export default function Login() {
       <div
         className={`relative flex flex-col items-center p-10 rounded-lg shadow-lg w-96 min-h-[520px] ${pageBgClass}`}
       >
-        {/* The content of this div will change based on the mode (login, change-username, change-password) */}
         {mode === "login" && (
           <>
             <h2 className="text-5xl font-bold">Login Page</h2>

@@ -12,16 +12,9 @@ export default function Settings() {
   const { historyEnabled, setHistoryEnabled } = useSettings();
   const { changeUsername, setChangeUsername } = useSettings();
   const { changePassword, setChangePassword } = useSettings();
+  const { isLoggedIn, setIsLoggedIn, username, setUsername, logout } = useSettings(); // Added username, setUsername, logout
 
   const fromGame = location.state?.from === 'game' || location.state?.fromGame === true;
-
-    useEffect(() => {
-    if (location.state?.activeTab) {
-      setActiveTab(location.state.activeTab);
-    } else if (!fromGame) {
-      setActiveTab("difficulty");
-    }
-  }, [location, fromGame]);
 
   const panelBgClass = {
     light: "bg-white text-black",
@@ -79,6 +72,12 @@ export default function Settings() {
     }
   };
 
+  // Use the logout function from context to handle sign out, which will clear localStorage and update state
+  const handleSignOut = () => {
+    logout(); // This handles clearing localStorage and state
+    navigate("/");
+  };
+
   return (
     <div
       className="h-screen w-screen fixed inset-0 flex items-center justify-center bg-cover bg-center"
@@ -104,16 +103,15 @@ export default function Settings() {
 
           {/* LEFT SIDEBAR */}
           <div className={`w-1/4 border-r flex flex-col ${sidebarBgClass}`}>
-          {fromGame && (
+            {/* User Profile Tab - Always visible */}
             <button
               onClick={() => setActiveTab("user")}
               className={`p-4 text-left ${
                 activeTab === "user" ? `${sidebarActiveClass} font-semibold` : `${sidebarHoverClass}`
               }`}
             >
-              User
+              User Profile
             </button>
-          )}
 
             <button
               onClick={() => setActiveTab("difficulty")}
@@ -142,40 +140,53 @@ export default function Settings() {
               Game Display
             </button>
 
-          {fromGame && (
-            <button
-              onClick={() => setActiveTab("account")}
-              className={`p-4 text-left ${
-                activeTab === "account" ? `${sidebarActiveClass} font-semibold` : `${sidebarHoverClass}`
-              }`}
-            >
-              Account
-            </button>
-          )}
-
-            {fromGame && (
-            <button
-              onClick={() => setActiveTab("return")}
-              className={`p-4 text-left ${
-                activeTab === "return"
-                  ? `${sidebarActiveClass} font-semibold`
-                  : `${sidebarHoverClass}`
-              }`}
-            >
-              Leave Game
-            </button>
-          )}
+            {/* Account Settings - Only visible when logged in */}
+            {isLoggedIn && (
+              <button
+                onClick={() => setActiveTab("account")}
+                className={`p-4 text-left ${
+                  activeTab === "account" ? `${sidebarActiveClass} font-semibold` : `${sidebarHoverClass}`
+                }`}
+              >
+                Account Settings
+              </button>
+            )}
           </div>
 
           {/* RIGHT CONTENT */}
-          <div className={`w-3/4 p-8 ${panelBgClass}`}>
-             {activeTab === "user" && (
+          <div className={`w-3/4 p-8 overflow-y-auto ${panelBgClass}`}>
+            {activeTab === "user" && (
               <div className="space-y-4 text-lg">
-                <h2 className="text-2xl font-semibold mb-14">User Profile</h2>
-                <p>Username: {localStorage.getItem("playerName")}</p>
-                <p>Games Played: {localStorage.getItem("gamesPlayed") || 0}</p>
-                <p>Games Won: {localStorage.getItem("gamesWon") || 0}</p>
-                <p>Win Percentage: {localStorage.getItem("gamesPlayed") > 0 ? ((localStorage.getItem("gamesWon") || 0) / localStorage.getItem("gamesPlayed") * 100).toFixed(2) : 0}%</p>
+                <h2 className="text-2xl font-semibold mb-8">User Profile</h2>
+                {isLoggedIn ? (
+                  <div className="text-center py-8 px-4 border rounded-lg mt-8">
+                    <p className="mb-6">Username: <strong>{username}</strong></p>
+                    <p className="mb-6">Games Played: {localStorage.getItem("gamesPlayed") || "-"}</p>
+                    <p className="mb-6">Games Won: {localStorage.getItem("gamesWon") || "-"}</p>
+                    <p className="mb-6">Win Percentage: {localStorage.getItem("gamesPlayed") > 0 ? ((localStorage.getItem("gamesWon") || 0) / localStorage.getItem("gamesPlayed") * 100).toFixed(2) : 0}%</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-center py-8 px-4 border rounded-lg mt-8">
+                      <p className="text-2xl mb-4">Playing as Guest</p>
+                      <p className="mb-6">Create an account to save your progress and compete on the leaderboard!</p>
+                      <div className="flex gap-4 justify-center">
+                        <button
+                          onClick={() => navigate("/login")}
+                          className={`px-6 py-2 mt-4 ${buttonBgClass} rounded-lg ${buttonHoverClass}`}
+                        >
+                          Log In
+                        </button>
+                        <button
+                          onClick={() => navigate("/signup")}
+                          className={`px-6 py-2 mt-4 ${buttonBgClass} rounded-lg ${buttonHoverClass}`}
+                        >
+                          Sign Up
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -222,20 +233,21 @@ export default function Settings() {
                     Hard <text className="text-xs mt-2">(ELO 1600-2000)</text>
                   </label>
                 </div>
-                
-                <h3 className="text-xl font-semibold mt-12">Special:</h3>
-                <p className="text-xs italic mt-2">(Special Settings Simulate The Playstyle Of Specific Players)</p>
-                <div className="grid grid-cols-2 gap-4 pl-73 mt-8">
-                  <label className="block">
-                    <input 
-                    type="radio" 
-                    name="difficulty" 
-                    value="magnus"
-                    checked={difficulty === "magnus"} 
-                    onChange={() => setDifficulty("magnus")} 
-                    className="mr-2" />
-                    Magnus Carlsen
-                  </label>
+                <div className="border-t mt-8">
+                  <h3 className="text-xl font-semibold mt-8">Special:</h3>
+                  <p className="text-xs italic mt-2">(Special Settings Simulate The Playstyle Of Specific Players)</p>
+                  <div className="flex justify-center mt-8">
+                    <label className="block">
+                      <input 
+                      type="radio" 
+                      name="difficulty" 
+                      value="magnus"
+                      checked={difficulty === "magnus"} 
+                      onChange={() => setDifficulty("magnus")} 
+                      className="mr-2" />
+                      Magnus Carlsen
+                    </label>
+                  </div>
                 </div>
               </div>
             )}
@@ -244,7 +256,7 @@ export default function Settings() {
               <div className="space-y-4 text-lg">
                 <h2 className="text-2xl font-semibold mb-12">Theme Settings</h2>
 
-                <div className="flex flex-col mt-8 gap-6 pl-76">
+                <div className="flex flex-col mt-8 gap-6 items-center">
                   {[
                     { label: "Light Mode", value: "light" },
                     { label: "Dark Mode", value: "dark" },
@@ -258,7 +270,7 @@ export default function Settings() {
                         name="display"
                         checked={theme === option.value}
                         onChange={() => setTheme(option.value)}
-                        className="form-radio"
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
                       />
                       <span className="ml-3 w-32">{option.label}</span>
                     </div>
@@ -272,33 +284,33 @@ export default function Settings() {
                 <h2 className="text-2xl font-semibold mb-16">Game Display Settings</h2>
 
                 <div className="flex flex-col gap-6">
-                  <div className="flex items-center">
-                    <span className="text-xl w-120 text-left pl-52">Enable Timer:</span>
+                  <div className="flex items-center justify-center">
+                    <span className="text-xl w-48 text-left mr-8">Enable Timer:</span>
                     <button
                       onClick={() => setTimerEnabled(prev => !prev)}
-                      className={`relative w-15 h-8 rounded-full transition-colors ${
+                      className={`relative w-16 h-8 rounded-full transition-colors ${
                         timerEnabled ? "bg-green-500" : "bg-gray-400"
                       }`}
                     >
                       <div
                         className={`h-6 w-6 bg-white rounded-full shadow-md transform transition-transform ${
-                          timerEnabled ? "translate-x-8" : "translate-x-0"
+                          timerEnabled ? "translate-x-9" : "translate-x-1"
                         }`}
                       ></div>
                     </button>
                   </div>
 
-                  <div className="flex items-center">
-                    <span className="text-xl w-120 text-left pl-52">Enable Move History:</span>
+                  <div className="flex items-center justify-center">
+                    <span className="text-xl w-48 text-left mr-8">Enable Move History:</span>
                     <button
                       onClick={() => setHistoryEnabled(prev => !prev)}
-                      className={`relative w-15 h-8 rounded-full transition-colors ${
+                      className={`relative w-16 h-8 rounded-full transition-colors ${
                         historyEnabled ? "bg-green-500" : "bg-gray-400"
                       }`}
                     >
                       <div
                         className={`h-6 w-6 bg-white rounded-full shadow-md transform transition-transform ${
-                          historyEnabled ? "translate-x-8" : "translate-x-0"
+                          historyEnabled ? "translate-x-9" : "translate-x-1"
                         }`}
                       ></div>
                     </button>
@@ -307,50 +319,34 @@ export default function Settings() {
               </div>
             )}
 
-            {activeTab === "account" && (
+            {activeTab === "account" && isLoggedIn && (
               <div className="space-y-4 text-lg">
-                <h2 className="text-2xl font-semibold mb-20">Account Settings</h2>
-                <button
-                  onClick={() => {setChangeUsername(true); navigate("/login", { state: { fromGame: fromGame }})}}
-                  className={`px-6 py-3 ${buttonBgClass} rounded-lg 
-                            ${buttonHoverClass} transition shadow-md`}
-                >
-                  Change Username
-                </button>
-                <div className="flex items-center justify-center mt-10">
-                <button
-                  onClick={() => {setChangePassword(true); navigate("/login", { state: { fromGame: fromGame }})}}
-                  className={`px-6 py-3 ${buttonBgClass} rounded-lg 
-                            ${buttonHoverClass} transition shadow-md`} 
-                >
-                  Change Password
-                </button>
+                <h2 className="text-2xl font-semibold mb-12">Account Settings</h2>
+                <div className="flex flex-col gap-6">
+                  <button
+                    onClick={() => {setChangeUsername(true); navigate("/login", { state: { fromGame: fromGame, action: "changeUsername" } })}}
+                    className={`px-6 py-3 ${buttonBgClass} rounded-lg 
+                              ${buttonHoverClass} transition shadow-md w-64 mx-auto`}
+                  >
+                    Change Username
+                  </button>
+                  <button
+                    onClick={() => {setChangePassword(true); navigate("/login", { state: { fromGame: fromGame, action: "changePassword" } })}}
+                    className={`px-6 py-3 ${buttonBgClass} rounded-lg 
+                              ${buttonHoverClass} transition shadow-md w-64 mx-auto`}
+                  >
+                    Change Password
+                  </button>
+                  <button
+                    onClick={handleSignOut}
+                    className="px-6 py-3 bg-red-500 text-white rounded-lg 
+                              hover:bg-red-600 transition shadow-md w-64 mx-auto mt-4"
+                  >
+                    Sign Out
+                  </button>
                 </div>
               </div>
             )}
-
-            {activeTab === "return" && fromGame && (
-            <div className="space-y-6 text-lg">
-              <h2 className="text-2xl font-semibold mb-20">Leave Game</h2>
-
-              <button
-                onClick={() => navigate("/game")}
-                className="px-6 py-3 bg-gray-600 text-white rounded-lg 
-                          hover:bg-gray-700 transition shadow-md"
-              >
-                Back to Game
-              </button>
-              <div className="flex items-center justify-center mt-10">
-              <button
-                onClick={() => navigate("/")}
-                className="px-6 py-3 bg-gray-600 text-white rounded-lg 
-                          hover:bg-gray-700 transition shadow-md"
-              >
-                Return to Home
-              </button>
-              </div>
-            </div>
-          )}
           </div>
         </div>
       </div>

@@ -32,7 +32,17 @@ export function SettingsProvider({ children }) {
     return saved !== null ? JSON.parse(saved) : false
   })
 
-  // save settings
+  // Authentication state 
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    const token = localStorage.getItem("token")
+    return token !== null
+  })
+
+  const [username, setUsername] = useState(() => {
+    return localStorage.getItem("playerName") || ""
+  })
+
+  // Save settings
   useEffect(() => {
     localStorage.setItem("theme", theme)
 
@@ -67,6 +77,21 @@ export function SettingsProvider({ children }) {
     localStorage.setItem("changePassword", JSON.stringify(changePassword))
   }, [changePassword])
 
+  // Update localStorage when auth state changes
+  useEffect(() => {
+    if (!isLoggedIn) {
+      localStorage.removeItem("token")
+      localStorage.removeItem("playerName")
+    }
+  }, [isLoggedIn])
+
+  const logout = () => {
+    localStorage.removeItem("token")
+    localStorage.removeItem("playerName")
+    setIsLoggedIn(false)
+    setUsername("")
+  }
+
   return (
     <SettingsContext.Provider
       value={{
@@ -81,8 +106,12 @@ export function SettingsProvider({ children }) {
         changeUsername,
         setChangeUsername,
         changePassword,
-        setChangePassword
-
+        setChangePassword,
+        isLoggedIn,
+        setIsLoggedIn,
+        username,
+        setUsername,
+        logout,
       }}
     >
       {children}

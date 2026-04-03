@@ -20,6 +20,15 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Theme classes */
+html.light {
+  --panel-bg: #ffffff;
+  --panel-text: #213547;
+  --page-bg: #ffffff;
+  --link-color: #646cff;
+  --link-hover: #747bff;
+}
+
 html.dark {
   --panel-bg: #1e293b;
   --panel-text: #cbd5e1;
@@ -81,6 +90,23 @@ html, body, #root {
   color: var(--panel-text);
 }
 
-* {
-  transition: background-color 0.2s ease, color 0.2s ease;
+button, a, input, .transition-theme {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+html:not([class]) {
+  visibility: hidden;
+}
+
+#root {
+  animation: fadeIn 0.1s ease-in;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }

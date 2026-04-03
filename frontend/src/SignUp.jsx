@@ -8,7 +8,7 @@ export default function SignUp() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { theme } = useSettings();
+  const { theme, setIsLoggedIn, setUsername } = useSettings();
 
   const pageBgClass = {
     light: "bg-white text-black",
@@ -80,9 +80,15 @@ export default function SignUp() {
         return;
       }
 
+      // Store in localStorage
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("playerName", name);
-      navigate("/game");
+      
+      // Update React state
+      setIsLoggedIn(true);
+      setUsername(name);
+      
+      navigate("/");
     } catch (err) {
       clearTimeout(timeout);
       setError(
