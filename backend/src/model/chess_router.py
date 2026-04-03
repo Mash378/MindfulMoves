@@ -3,18 +3,22 @@ from pydantic import BaseModel
 from typing import Optional
 import chess
 import uuid
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 # Import model functions
 from src.model.model_functions import (
     predict_next_move,
     infer_phase,
     sample_error_level,
+    evaluate_human_move,
     TEMPS,
     STYLE_TEMP_NUDGE,
 )
 from src.model.game_session import sessions, make_session, board_state, get_bot_move
 
 router = APIRouter(prefix="/chess", tags=["chess"])
+_executor = ThreadPoolExecutor(max_workers=2)
 
 ELO_TO_SKILL = {1500: 3, 1600: 5, 1700: 7, 1800: 9}
 
@@ -29,6 +33,29 @@ class MoveRequest(BaseModel):
     from_square: Optional[str] = None
     to_square:   Optional[str] = None
     promotion:   Optional[str] = None
+
+class FeedbackRequest(BaseModel):
+    session_id:    str
+    uci:           str
+    player_color:  str = "white"
+
+@router.post("/game/feedback")
+async def get_move_feedback(req: FeedbackRequest):
+    if req.session_id not in sessions:
+        raise HTTPException(404, "Session not found")
+
+    session        = sessions[req.session_id]
+    history_before = session["history"][:-1]   # history before this move
+
+    loop    = asyncio.get_event_loop()
+    quality = await loop.run_in_executor(
+        _executor,
+        evaluate_human_move,
+        history_before,
+        req.uci,
+        req.player_color,
+    )
+    return {"uci": req.uci, "quality": quality}
 
 class ResetRequest(BaseModel):
     session_id: str
@@ -184,16 +211,6 @@ def reset_game(req: ResetRequest):
 def close_game(session_id: str):
     if session_id in sessions:
         sessions.pop(session_id) 
-    return {"status": "closed"}
-
-
-@router.delete("/game/close")
-def close_game(session_id: str):
-    if session_id in sessions:
-        session = sessions.pop(session_id)
-        if session.get("engine"):
-            try: session["engine"].quit()
-            except: pass
     return {"status": "closed"}
 
 @router.get("/game/history/flat")
