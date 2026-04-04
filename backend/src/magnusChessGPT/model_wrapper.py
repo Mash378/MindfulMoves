@@ -10,11 +10,14 @@ class ChessModel:
         
         # Load base model
         config = PeftConfig.from_pretrained(model_path)
-        base_model = AutoModelForCausalLM.from_pretrained(config.base_model_name_or_path)
+        base_model = AutoModelForCausalLM.from_pretrained(
+            config.base_model_name_or_path,
+            torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+            device="auto")
 
         # Load LoRA adapter
         self.model = PeftModel.from_pretrained(base_model, model_path)
-        self.model.to(self.device)
+
         self.model.eval()
 
         # Load tokenizer
@@ -60,9 +63,11 @@ class ChessModel:
             try:
                 board.parse_san(move)
                 legal_moves.append(move)
-            except:
+            except (chess.InvalidMoveError, chess.IllegalMoveError, ValueError):
                 continue  # Skip illegal moves
-
+        
+        if not legal_moves:
+            return {"error": "No legal moves predicted"}
         return {
             "move": legal_moves[0],
             "alternatives": legal_moves[1:top_k]

@@ -2,7 +2,7 @@ import chess
 import pytest
 from src.magnusChessGPT.model_wrapper import ChessModel
 
-model_path = ""
+model_path = "../src/magnusChessGPT/modelConfig"
 
 @pytest.fixture
 def chess_model():
@@ -48,3 +48,4 @@ class TestChessModel():
         assert is_legal, f"Move {result['move']} is not legal"
 
 
+print("All tests passed!")
