@@ -13,7 +13,9 @@ class ChessModel:
         base_model = AutoModelForCausalLM.from_pretrained(
             config.base_model_name_or_path,
             torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-            device="auto")
+            #torch_dtype=torch.float32, 
+            #device_map={"": "cpu"})
+            device_map="auto")
 
         # Load LoRA adapter
         self.model = PeftModel.from_pretrained(base_model, model_path)
@@ -25,9 +27,14 @@ class ChessModel:
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def predict(self, move_history, top_k=3):
-        context = " ".join(move_history) if move_history else ""
+        if not move_history:
+            return {
+                "move": "e4",
+                "alternatives": ["d4", "Nf3"]
+            }
+        context = " ".join(move_history) if move_history else " "
 
-        inputs = self.tokenizer(context, return_tensors="pt", truncation=True, max_length=512).to(self.device)
+        inputs = self.tokenizer(context, return_tensors="pt", truncation=True, max_length=512).to(self.model.device)
 
         #No gradients saved
         with torch.no_grad():
