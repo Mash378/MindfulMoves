@@ -1,3 +1,4 @@
+import logging
 import random
 from pathlib import Path
 from typing import Any
@@ -5,6 +6,8 @@ from typing import Any
 import chess
 
 from src.data.env import server_env
+
+logger = logging.getLogger(__name__)
 
 
 _MODEL: Any = None
@@ -47,31 +50,43 @@ def get_ai_move(fen: str, move_history: list[str] | None = None) -> str | None:
     Tries the finetuned model first, falls back to random legal move.
     """
     board = chess.Board(fen)
-    return _random_legal_move(board)
-
-    """
-    board = chess.Board(fen)
     if not list(board.legal_moves):
         return None
 
     model = _load_model()
     if model is None:
+        logger.warning(
+            "AI model unavailable (load error: %s) — using random legal move",
+            _MODEL_LOAD_ERROR,
+        )
         return _random_legal_move(board)
 
     history = move_history or []
 
     try:
-        prediction = model.predict_move(history)
-    except Exception:
+        prediction = model.predict(history)
+    except Exception as exc:
+        logger.warning(
+            "AI model prediction raised an exception (%s) — using random legal move",
+            exc,
+        )
         return _random_legal_move(board)
 
     san_move = prediction.get("move") if isinstance(prediction, dict) else None
     if not san_move:
+        logger.warning(
+            "AI model returned no move (prediction: %r) — using random legal move",
+            prediction,
+        )
         return _random_legal_move(board)
 
     try:
         move = board.parse_san(san_move)
         return move.uci()
-    except (chess.InvalidMoveError, chess.IllegalMoveError, ValueError):
+    except (chess.InvalidMoveError, chess.IllegalMoveError, ValueError) as exc:
+        logger.warning(
+            "AI move '%s' is invalid/illegal (%s) — using random legal move",
+            san_move,
+            exc,
+        )
         return _random_legal_move(board)
-        """
