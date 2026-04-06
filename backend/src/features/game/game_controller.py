@@ -138,8 +138,33 @@ def make_move(
     fen_after_ai: str | None = None
 
     if new_status == GameStatus.active:
+        # Build SAN history from persisted UCI moves + current player move.
+        san_history: list[str] = []
+        try:
+            history_board = chess.Board()
+            previous_moves = (
+                db.query(Move)
+                .filter(Move.game_id == game_id)
+                .order_by(Move.move_number.asc())
+                .all()
+            )
+
+            for m in previous_moves:
+                player_mv = chess.Move.from_uci(str(m.player_uci))
+                san_history.append(history_board.san(player_mv))
+                history_board.push(player_mv)
+
+                if m.ai_uci:
+                    ai_mv = chess.Move.from_uci(str(m.ai_uci))
+                    san_history.append(history_board.san(ai_mv))
+                    history_board.push(ai_mv)
+
+            san_history.append(history_board.san(player_move))
+        except Exception:
+            san_history = []
+
         # AI responds
-        ai_uci_str = get_ai_move(fen_after_player)
+        ai_uci_str = get_ai_move(fen_after_player, san_history)
         if ai_uci_str is None:
             # No legal moves for AI — shouldn't happen after a non-terminal position, treat as draw
             new_status = GameStatus.draw

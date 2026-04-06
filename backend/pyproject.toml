@@ -1,3 +1,6 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [project]
 name = "backend"
 version = "0.1.0"
@@ -13,4 +16,16 @@ dependencies = [
     "sqlalchemy>=2.0.46",
     "uvicorn>=0.41.0",
     "chess>=1.10.0",
+    "peft>=0.17.1",
+    "torch>=2.8.0",
+    "transformers>=4.57.1",
+    "pytest>=9.0.2",
 ]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
