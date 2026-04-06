@@ -101,12 +101,28 @@ export default function Login() {
       // Store in localStorage
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("playerName", name);
-      
+
       // Update React state
       setIsLoggedIn(true);
       setUsername(name);
-      
-      navigate("/");
+
+      // Create a new game on the backend
+      const gameRes = await fetch(`${import.meta.env.VITE_API_URL}/game/new`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.access_token}`,
+        },
+      });
+      if (!gameRes.ok) {
+        setError("Failed to create game");
+        return;
+      }
+      const gameData = await gameRes.json();
+      localStorage.setItem("gameId", gameData.game_id);
+      localStorage.setItem("currentFen", gameData.fen);
+
+      navigate("/game");
     } catch (err) {
       clearTimeout(timeout);
       setError(
