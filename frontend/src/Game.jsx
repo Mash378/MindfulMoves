@@ -76,7 +76,7 @@ export default function Game() {
       setGameStatus("playing");
       setBackendStatus("active");
     } catch {
-      // Network error — silently fail, user can retry with New Game
+      //Todo: Implement error handing later
     }
   }, [navigate]);
 
@@ -167,8 +167,34 @@ export default function Game() {
     return () => clearInterval(interval);
   }, [timer.active, gameStatus, timerEnabled]);
 
-  const undoMove = () => {
-    //Todo: Hook up with backend undo move later
+  const undoMove = async () => {
+    if (moveHistory.length === 0 || isThinking) return;
+
+    try {
+      const res = await fetch(`${API_URL}/game/${gameId}/undo`, {
+        method: "POST",
+        headers: apiHeaders(),
+      });
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          navigate("/signup");
+        }
+        return;
+      }
+
+      const data = await res.json();
+
+      setCurrentFen(data.fen);
+      localStorage.setItem("currentFen", data.fen);
+      setBoard(fenToBoard(data.fen));
+      setBackendStatus(data.status);
+      setGameStatus("playing");
+      setMoveHistory((prev) => prev.slice(0, -2));
+      setLastMove(null);
+    } catch {
+      // Network error — do nothing
+    }
   };
 
   const formatTime = (seconds) => {
@@ -632,6 +658,7 @@ export default function Game() {
     const pieceColor = getPieceColor(piece);
 
     // Only allow selecting Light (white) pieces — player is always white
+    //Todo: Implement color choosing later
     if (!selectedPiece && piece && pieceColor === "Light") {
       setSelectedPiece({ row, col });
       setValidMoves(getValidMoves(row, col));
@@ -876,9 +903,9 @@ export default function Game() {
         </button>
         <button
           onClick={undoMove}
-          disabled={moveHistory.length === 0}
+          disabled={moveHistory.length === 0 || isThinking || backendStatus !== "active"}
           className={`px-4 py-2 rounded ${
-            moveHistory.length === 0
+            moveHistory.length === 0 || isThinking || backendStatus !== "active"
               ? "bg-gray-400 cursor-not-allowed"
               : `${buttonBgClass} ${buttonHoverClass}`
           }`}

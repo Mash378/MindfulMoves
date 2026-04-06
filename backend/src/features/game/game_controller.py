@@ -37,6 +37,12 @@ class GameStateResponse(BaseModel):
     move_count: int
 
 
+class UndoMoveResponse(BaseModel):
+    fen: str
+    status: str
+    move_count: int
+
+
 def _resolve_status_after(board: chess.Board, player_won: bool) -> GameStatus:
     """Return the terminal GameStatus for the given board position."""
     if board.is_checkmate():
@@ -205,6 +211,46 @@ def make_move(
         status=new_status.value,
         game_over=new_status != GameStatus.active,
     )
+
+
+def undo_move(game_id: str, user_id: str, db: Session) -> UndoMoveResponse:
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if not game:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
+
+    if str(game.user_id) != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+
+    if game.status != GameStatus.active:  # type: ignore
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot undo on a finished game")
+
+    last_move = (
+        db.query(Move)
+        .filter(Move.game_id == game_id)
+        .order_by(Move.move_number.desc())
+        .first()
+    )
+    if not last_move:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No moves to undo")
+
+    if last_move.move_number > 1:
+        prior_move = (
+            db.query(Move)
+            .filter(Move.game_id == game_id, Move.move_number == last_move.move_number - 1)
+            .first()
+        )
+        if prior_move is None or prior_move.fen_after_ai is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot undo")
+        restored_fen = str(prior_move.fen_after_ai)
+    else:
+        restored_fen = STARTING_FEN
+
+    db.delete(last_move)
+    game.current_fen = restored_fen  # type: ignore
+    db.commit()
+
+    remaining_count = db.query(Move).filter(Move.game_id == game_id).count()
+    return UndoMoveResponse(fen=restored_fen, status=GameStatus.active.value, move_count=remaining_count)
 
 
 def get_game_state(game_id: str, user_id: str, db: Session) -> GameStateResponse:
