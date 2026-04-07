@@ -17,6 +17,11 @@ export function SettingsProvider({ children }) {
     return saved !== null ? JSON.parse(saved) : true
   })
 
+  const [timerDuration, setTimerDuration] = useState(() => {
+    const saved = localStorage.getItem("timerDuration")
+    return saved !== null ? parseInt(saved) : 600
+  })
+
   const [historyEnabled, setHistoryEnabled] = useState(() => {
     const saved = localStorage.getItem("historyEnabled")
     return saved !== null ? JSON.parse(saved) : true
@@ -66,6 +71,10 @@ export function SettingsProvider({ children }) {
   }, [timerEnabled])
 
   useEffect(() => {
+    localStorage.setItem("timerDuration", timerDuration.toString())
+  }, [timerDuration])
+
+  useEffect(() => {
     localStorage.setItem("historyEnabled", JSON.stringify(historyEnabled))
   }, [historyEnabled])
 
@@ -101,6 +110,8 @@ export function SettingsProvider({ children }) {
         setDifficulty,
         timerEnabled,
         setTimerEnabled,
+        timerDuration,
+        setTimerDuration,
         historyEnabled,
         setHistoryEnabled,
         changeUsername,
