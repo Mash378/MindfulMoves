@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback,  useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettings } from "./SettingsContext.jsx";
 import { fenToBoard, boardPositionToUci } from "./chessUtils.js";
@@ -56,6 +56,17 @@ export default function Game() {
     username,
     logout,
   } = useSettings();
+  
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    createNewGame();
+  }, [difficulty]);
+
   const createNewGame = useCallback(async () => {
     try {
       const isMagnus = difficulty === "magnus"; // Note: value in your radio is "magnus"
@@ -202,7 +213,11 @@ export default function Game() {
     if (moveHistory.length === 0 || isThinking) return;
 
     try {
-      const res = await fetch(`${API_URL}/game/${gameId}/undo`, {
+       const isMagnus = difficulty === "magnus";
+      const endpoint = isMagnus
+        ? `${API_URL}/game/${gameId}/undo`
+        : `${API_URL}/chess/game/undo?session_id=${gameId}`; 
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: apiHeaders(),
       });
@@ -215,11 +230,12 @@ export default function Game() {
       }
 
       const data = await res.json();
+      const fen = isMagnus ? data.fen : data.board?.fen;
 
-      setCurrentFen(data.fen);
-      localStorage.setItem("currentFen", data.fen);
-      setBoard(fenToBoard(data.fen));
-      setBackendStatus(data.status);
+      setCurrentFen(fen);
+      localStorage.setItem("currentFen", fen);
+      setBoard(fenToBoard(fen));
+       setBackendStatus(isMagnus ? data.status : "active");
       setGameStatus("playing");
       setMoveHistory((prev) => {
       const newHistory = prev.slice(0, -2);
@@ -729,7 +745,7 @@ export default function Game() {
       if (!timer.active && timerEnabled) {
         setTimer((prev) => ({ ...prev, active: true }));
       }
-  
+      console.log("difficulty:", difficulty);
       const movingPiece = board[startRow][startCol];
       const capturedPiece = board[endRow][endCol];
   
@@ -1282,7 +1298,15 @@ export default function Game() {
                           name="difficulty"
                           value="easy"
                           checked={difficulty === "easy"}
-                          onChange={() => setDifficulty("easy")}
+                          onChange={() => {
+                          if (moveHistory.length > 0) {
+                            if (window.confirm("Changing difficulty will start a new game. Continue?")) {
+                              setDifficulty("easy"); // or whichever value
+                            }
+                          } else {
+                            setDifficulty("easy");
+                          }
+                        }}
                           className="mr-2"
                         />
                         Easy <span className="text-xs">(ELO 800-1200)</span>
@@ -1293,7 +1317,15 @@ export default function Game() {
                           name="difficulty"
                           value="medium"
                           checked={difficulty === "medium"}
-                          onChange={() => setDifficulty("medium")}
+                          onChange={() => {
+                          if (moveHistory.length > 0) {
+                            if (window.confirm("Changing difficulty will start a new game. Continue?")) {
+                              setDifficulty("medium"); // or whichever value
+                            }
+                          } else {
+                            setDifficulty("medium");
+                          }
+                        }}
                           className="mr-2"
                         />
                         Medium <span className="text-xs">(ELO 1200-1600)</span>
@@ -1304,7 +1336,15 @@ export default function Game() {
                           name="difficulty"
                           value="hard"
                           checked={difficulty === "hard"}
-                          onChange={() => setDifficulty("hard")}
+                          onChange={() => {
+                          if (moveHistory.length > 0) {
+                            if (window.confirm("Changing difficulty will start a new game. Continue?")) {
+                              setDifficulty("hard"); // or whichever value
+                            }
+                          } else {
+                            setDifficulty("hard");
+                          }
+                        }}
                           className="mr-2"
                         />
                         Hard <span className="text-xs">(ELO 1600-2000)</span>
@@ -1324,7 +1364,15 @@ export default function Game() {
                             name="difficulty"
                             value="magnus"
                             checked={difficulty === "magnus"}
-                            onChange={() => setDifficulty("magnus")}
+                            onChange={() => {
+                          if (moveHistory.length > 0) {
+                            if (window.confirm("Changing difficulty will start a new game. Continue?")) {
+                              setDifficulty("magnus"); // or whichever value
+                            }
+                          } else {
+                            setDifficulty("magnus");
+                          }
+                        }}
                             className="mr-2"
                           />
                           Magnus Carlsen

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 import chess
@@ -232,4 +232,38 @@ def get_flat_history(session_id: str):
             }
             for i, entry in enumerate(log)
         ]
+    }
+
+class UndoRequest(BaseModel):
+    session_id: str
+
+@router.post("/game/undo")
+def session_undo_move(session_id: str):
+    if session_id not in sessions:
+        raise HTTPException(404, "Session not found")
+
+    session = sessions[session_id]
+    board   = session["board"]
+    history = session["history"]
+    log     = session["move_log"]
+
+    if not history:
+        raise HTTPException(400, "No moves to undo")
+
+    if log and log[-1]["type"] == "bot":
+        board.pop()
+        history.pop()
+        log.pop()
+
+    if log and log[-1]["type"] == "human":
+        board.pop()
+        history.pop()
+        log.pop()
+    else:
+        raise HTTPException(400, "No human move to undo")
+
+    return {
+        "status":  "ok",
+        "board":   board_state(session),
+        "history": history,
     }
