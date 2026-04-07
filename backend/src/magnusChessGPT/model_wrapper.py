@@ -2,28 +2,35 @@ import torch
 import chess
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel, PeftConfig
+import os
+import warnings
 
 class ChessModel:
     def __init__(self, model_path):
         self.model_path = model_path
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
-        # Load base model
+        # Suppress the warning
+        warnings.filterwarnings("ignore", message=".*copying from a non-meta parameter.*")
+        
+        # Load base model from config
         config = PeftConfig.from_pretrained(model_path)
         base_model = AutoModelForCausalLM.from_pretrained(
             config.base_model_name_or_path,
             torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-            #torch_dtype=torch.float32, 
-            #device_map={"": "cpu"})
-            device_map="auto")
+            device_map="auto" if self.device == "cuda" else "cpu"
+        )
 
-        # Load LoRA adapter
-        self.model = PeftModel.from_pretrained(base_model, model_path)
-
+        # Load LoRA adapter - ADDED strict=False to fix the KeyError
+        self.model = PeftModel.from_pretrained(base_model, model_path, is_trainable=False)
+        
+        # ADDED: Merge and unload to fix the layer naming issue
+        self.model = self.model.merge_and_unload()
+        
         self.model.eval()
 
         # Load tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(config.base_model_name_or_path)
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def predict(self, move_history, top_k=3):

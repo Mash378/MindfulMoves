@@ -37,8 +37,10 @@ export default function Game() {
 
   const {
     timerEnabled,
+    timerDuration,
     historyEnabled,
     setTimerEnabled,
+    setTimerDuration,
     setHistoryEnabled,
     theme,
     setTheme,
@@ -1319,7 +1321,43 @@ export default function Game() {
                           ></div>
                         </button>
                       </div>
-                      <div className="flex items-center justify-Center">
+                      {timerEnabled && (
+                        <div className="flex items-center justify-center mt-4 ml-24 gap-4">
+                          <span className="text-xl w-40 text-left mr-8">Timer Duration:</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              value={Math.floor(timerDuration / 60)}
+                              onChange={(e) => {
+                                let rawValue = e.target.value;
+                                
+                                if (rawValue.includes('.')) {
+                                  rawValue = rawValue.split('.')[0];
+                                }
+                                
+                                let minutes = parseInt(rawValue, 10);
+                                
+                                if (isNaN(minutes) || rawValue === '') {
+                                  minutes = 1;
+                                }
+                                
+                                minutes = parseInt(minutes.toString(), 10);
+                                minutes = Math.max(1, Math.min(999, minutes));
+                                setTimerDuration(minutes * 60);
+                              }}
+                              onFocus={(e) => {
+                                e.target.select();
+                              }}
+                              min="1"
+                              max="999"
+                              step="1"
+                              className={`px-4 py-2 rounded-lg border w-28 text-center ${buttonBgClass} focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                            />
+                            <span className="text-lg">minutes</span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-Center mt-4">
                         <span className="text-xl w-48 text-left mr-8">
                           Enable Move History:
                         </span>
