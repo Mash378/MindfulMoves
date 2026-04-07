@@ -5,7 +5,7 @@ import random
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from pathlib import Path
 
-MODEL_PATH = str(Path(__file__).parent / "demo_model_2").replace("\\", "/")
+MODEL_PATH = str(Path(__file__).parent / "ChessGPT-4.5M").replace("\\", "/")
 print(f"Loading model from {MODEL_PATH}...")
 
 # tokenizer = AutoTokenizer.from_pretrained("gpt2")
@@ -125,9 +125,9 @@ def predict_next_move(
 
 
 ELO_PROFILE = {
-    "1500": (0.58, 0.21, 0.13, 0.08),
-    "1600": (0.65, 0.20, 0.10, 0.05),
-    "1700": (0.72, 0.17, 0.07, 0.04),
+    "1500": (0.5, 0.25, 0.15, 0.1),
+    "1600": (0.7, 0.20, 0.10, 0.05),
+    "1700": (0.8, 0.1, 0.06, 0.04),
 }
 ERROR_NAMES      = ["Good", "Inaccuracy", "Mistake", "Blunder"]
 TEMPS            = {"Good": 0.3, "Inaccuracy": 0.8, "Mistake": 1.2, "Blunder": 1.5}

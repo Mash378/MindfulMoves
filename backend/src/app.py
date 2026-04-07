@@ -4,6 +4,8 @@ from src.data.env import server_env
 from src.db.database import Base, engine
 from src.features.auth.auth_router import router as auth_router
 from src.features.game.game_router import router as game_router
+from src.model.chess_router import router as chess_router
+
 
 app = FastAPI(
     title="MindfulMoves",
@@ -23,7 +25,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(game_router)
-
+app.include_router(chess_router)
 
 @app.on_event("startup")
 def startup():

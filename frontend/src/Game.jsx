@@ -13,9 +13,15 @@ function apiHeaders() {
   };
 }
 
+function uciSquareToCoords(square) {
+  const col = square.charCodeAt(0) - "a".charCodeAt(0); // 0-7
+  const row = 8 - parseInt(square[1], 10);              // 0-7
+  return [row, col];
+}
+
 export default function Game() {
-  const [playerName, setPlayerName]       = useState("");
-  const [board, setBoard]                 = useState([]);
+  const [playerName, setPlayerName] = useState("");
+  const [board, setBoard] = useState([]);
   const [selectedPiece, setSelectedPiece] = useState(null);
   const [validMoves, setValidMoves] = useState([]);
   const [gameStatus, setGameStatus] = useState("playing");
@@ -48,12 +54,31 @@ export default function Game() {
     username,
     logout,
   } = useSettings();
-
   const createNewGame = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/game/new`, {
+      const isMagnus = difficulty === "magnus"; // Note: value in your radio is "magnus"
+      const endpoint = isMagnus ? `${API_URL}/game/new` : `${API_URL}/chess/game/new`;
+      
+      let body = {};
+      if (!isMagnus) {
+        // Map frontend difficulty to backend expectations
+        const configMap = {
+          easy:   { elo: 1500, style: "Balanced" },
+          medium: { elo: 1600, style: "Balanced" },
+          hard:   { elo: 1700, style: "Aggressive" }
+        };
+        const config = configMap[difficulty] || configMap.medium;
+
+        body = {
+          player_color: "white",
+          bot_style: config.style,
+          target_elo: config.elo
+        };
+      }
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: apiHeaders(),
+        body: isMagnus ? null : JSON.stringify(body)
       });
       if (!res.ok) {
         if (res.status === 401) {
@@ -63,11 +88,15 @@ export default function Game() {
         return;
       }
       const data = await res.json();
-      setGameId(data.game_id);
-      setCurrentFen(data.fen);
-      setBoard(fenToBoard(data.fen));
-      localStorage.setItem("gameId", data.game_id);
-      localStorage.setItem("currentFen", data.fen);
+      const id = data.game_id || data.session_id;
+      const fen = isMagnus ? data.fen : data.board.fen;
+      //const id = isMagnus ? data.game_id : data.session_id;
+      setGameId(id);
+      // setGameId(data.game_id);
+      setCurrentFen(fen);
+      setBoard(fenToBoard(fen));
+      localStorage.setItem("gameId", id);
+      localStorage.setItem("currentFen", fen);
       setSelectedPiece(null);
       setValidMoves([]);
       setMoveHistory([]);
@@ -75,10 +104,10 @@ export default function Game() {
       setTimer({ Light: 600, active: false, startTime: null });
       setGameStatus("playing");
       setBackendStatus("active");
-    } catch {
-      //Todo: Implement error handing later
+    } catch (err){
+      console.error("Failed to create game", err);
     }
-  }, [navigate]);
+  }, [navigate, difficulty]);
 
   useEffect(() => {
     const savedState = localStorage.getItem("gameState");
@@ -190,8 +219,23 @@ export default function Game() {
       setBoard(fenToBoard(data.fen));
       setBackendStatus(data.status);
       setGameStatus("playing");
-      setMoveHistory((prev) => prev.slice(0, -2));
-      setLastMove(null);
+      setMoveHistory((prev) => {
+      const newHistory = prev.slice(0, -2);
+      // Highlight the move that is now the last one
+      if (newHistory.length >= 1) {
+        const lastEntry = newHistory[newHistory.length - 1];
+        const from = typeof lastEntry.from === "string"
+          ? uciSquareToCoords(lastEntry.from)
+          : lastEntry.from;
+        const to = typeof lastEntry.to === "string"
+          ? uciSquareToCoords(lastEntry.to)
+          : lastEntry.to;
+        setLastMove({ from, to });
+      } else {
+        setLastMove(null);
+      }
+      return newHistory;
+    });
     } catch {
       // Network error — do nothing
     }
@@ -650,7 +694,7 @@ export default function Game() {
   //   }
   // };
 
-  const handleSquareClick = async (row, col) => {
+  const handleSquareClick = (row, col) => {
     // Block interaction when AI is thinking or game is over
     if (isThinking || backendStatus !== "active") return;
 
@@ -661,7 +705,7 @@ export default function Game() {
     //Todo: Implement color choosing later
     if (!selectedPiece && piece && pieceColor === "Light") {
       setSelectedPiece({ row, col });
-      await fetchLegalMoves(row, col);
+      setValidMoves(getValidMoves(row, col));
       return;
     }
 
@@ -680,122 +724,144 @@ export default function Game() {
   };
 
   const movePiece = async (startRow, startCol, endRow, endCol) => {
-    if (!timer.active && timerEnabled) {
-      setTimer((prev) => ({ ...prev, active: true }));
-    }
-
-    const movingPiece = board[startRow][startCol];
-    const capturedPiece = board[endRow][endCol];
-
-    // Determine promotion: pawn reaching rank 8 (row 0 for Light)
-    let promotionPiece = null;
-    if (getPieceType(movingPiece) === "Pawn" && endRow === 0) {
-      promotionPiece = "q"; // auto-promote to queen
-    }
-
-    const uci = boardPositionToUci(
-      startRow,
-      startCol,
-      endRow,
-      endCol,
-      promotionPiece,
-    );
-
-    // Record player's move in history
-    if (historyEnabled) {
-      const notation = getChessNotation(
-        movingPiece,
+      if (!timer.active && timerEnabled) {
+        setTimer((prev) => ({ ...prev, active: true }));
+      }
+  
+      const movingPiece = board[startRow][startCol];
+      const capturedPiece = board[endRow][endCol];
+  
+      // Determine promotion: pawn reaching rank 8 (row 0 for Light)
+      let promotionPiece = null;
+      if (getPieceType(movingPiece) === "Pawn" && endRow === 0) {
+        promotionPiece = "q"; // auto-promote to queen
+      }
+  
+      const uci = boardPositionToUci(
         startRow,
         startCol,
         endRow,
         endCol,
-        capturedPiece,
+        promotionPiece,
       );
-      setMoveHistory((prev) => [
-        ...prev,
-        {
-          player: "Light",
-          notation,
-          piece: movingPiece,
-          from: [startRow, startCol],
-          to: [endRow, endCol],
-          captured: capturedPiece,
-        },
-      ]);
-    }
-
-    setLastMove({ from: [startRow, startCol], to: [endRow, endCol] });
-
-    // Optimistically update the board with player's move
-    const newBoard = board.map((row) => [...row]);
-    newBoard[endRow][endCol] = promotionPiece ? "LightQueen" : movingPiece;
-    newBoard[startRow][startCol] = "";
-    setBoard(newBoard);
-
-    // Send move to backend
-    setIsThinking(true);
-    try {
-      const res = await fetch(`${API_URL}/game/${gameId}/move`, {
-        method: "POST",
-        headers: apiHeaders(),
-        body: JSON.stringify({ uci, current_fen: currentFen }),
-      });
-
-      if (!res.ok) {
-        if (res.status === 401) {
-          navigate("/signup");
-          return;
-        }
-        // On error (e.g. illegal move, out of sync), resync from backend
-        const errData = await res.json().catch(() => null);
-        if (res.status === 409 && errData?.detail?.server_fen) {
-          // Board out of sync — resync from server FEN
-          const serverFen = errData.detail.server_fen;
-          setCurrentFen(serverFen);
-          setBoard(fenToBoard(serverFen));
-        }
-        setIsThinking(false);
-        return;
-      }
-
-      const data = await res.json();
-
-      // Record AI move in history
-      if (historyEnabled && data.ai_uci) {
-        const aiFrom = data.ai_uci.slice(0, 2);
-        const aiTo = data.ai_uci.slice(2, 4);
-        setLastMove({ from: aiFrom, to: aiTo });
+  
+      // Record player's move in history
+      if (historyEnabled) {
+        const notation = getChessNotation(
+          movingPiece,
+          startRow,
+          startCol,
+          endRow,
+          endCol,
+          capturedPiece,
+        );
         setMoveHistory((prev) => [
           ...prev,
           {
-            player: "Dark",
-            notation: `${aiFrom}-${aiTo}`,
-            piece: "AI",
-            from: aiFrom,
-            to: aiTo,
-            captured: null,
+            player: "Light",
+            notation,
+            piece: movingPiece,
+            from: [startRow, startCol],
+            to: [endRow, endCol],
+            captured: capturedPiece,
           },
         ]);
       }
+  
+      setLastMove({ from: [startRow, startCol], to: [endRow, endCol] });
+  
+      // Optimistically update the board with player's move
+      const newBoard = board.map((row) => [...row]);
+      newBoard[endRow][endCol] = promotionPiece ? "LightQueen" : movingPiece;
+      newBoard[startRow][startCol] = "";
+      setBoard(newBoard);
+      
+      // Send move to backend
+      setIsThinking(true);
+      try {
+        const isMagnus = difficulty.toLowerCase().includes("magnus");
 
-      // Update board from backend FEN (source of truth)
-      setCurrentFen(data.fen);
-      localStorage.setItem("currentFen", data.fen);
-      setBoard(fenToBoard(data.fen));
-      setBackendStatus(data.status);
 
-      if (data.game_over) {
-        setGameStatus(data.status);
-      } else {
-        setGameStatus("playing");
+        const endpoint = isMagnus 
+          ? `${API_URL}/game/${gameId}/move` 
+          : `${API_URL}/chess/game/move`;
+
+        const payload = isMagnus 
+          ? { uci, current_fen: currentFen } 
+          : { session_id: gameId, uci };
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: apiHeaders(),
+          body: JSON.stringify(payload),
+        });
+  
+        if (!res.ok) {
+          if (res.status === 401) {
+            navigate("/signup");
+            return;
+          }
+          // On error (e.g. illegal move, out of sync), resync from backend
+          const errData = await res.json().catch(() => null);
+          if (res.status === 409 && errData?.detail?.server_fen) {
+            // Board out of sync — resync from server FEN
+            const serverFen = errData.detail.server_fen;
+            setCurrentFen(serverFen);
+            setBoard(fenToBoard(serverFen));
+          }
+          setIsThinking(false);
+          return;
+        }
+  
+        const data = await res.json();
+        const backendFen = isMagnus ? data.fen : data.board?.fen;
+        const botMoveUci = isMagnus ? data.ai_uci : data.bot_move?.move;
+        const isGameOver = isMagnus 
+        ? !!data.game_over 
+        : !!data.board?.is_game_over;
+        // Record AI move in history
+        if (historyEnabled && botMoveUci) {
+          const aiFrom = botMoveUci.slice(0, 2);
+          const aiTo = botMoveUci.slice(2, 4);
+          const [afr, afc] = uciSquareToCoords(aiFrom);
+          const [atr, atc] = uciSquareToCoords(aiTo);
+          setLastMove({ from: [afr, afc], to: [atr, atc] });
+          //setLastMove({ from: aiFrom, to: aiTo });
+          setMoveHistory((prev) => [
+            ...prev,
+            {
+              player: "Dark",
+              notation: `${aiFrom}-${aiTo}`,
+              piece: "AI",
+              from: aiFrom,
+              to: aiTo,
+              captured: null,
+            },
+          ]);
+        }
+  
+        // Update board from backend FEN (source of truth)
+        setCurrentFen(backendFen);
+        localStorage.setItem("currentFen", backendFen);
+        setBoard(fenToBoard(backendFen));
+        const newStatus = isMagnus 
+        ? data.status 
+        : (isGameOver ? "game_over" : "active"); 
+
+        setBackendStatus(newStatus);
+  
+        if (isGameOver) {
+          setGameStatus(isMagnus ? data.status : "game_over");
+        } else {
+          setGameStatus("playing");
+        }
+      } catch {
+        // Network error — revert to previous state
+        setBoard(board);
+      } finally {
+        setIsThinking(false);
       }
-    } catch {
-      // Network error — revert to previous state
-      setBoard(board);
-    } finally {
-      setIsThinking(false);
-    }
-  };
+    };
+  
 
   const handleNewGame = async () => {
     await createNewGame();
@@ -874,28 +940,6 @@ export default function Game() {
   }[theme];
   return (
     <div className="min-h-screen flex flex-col items-center justify-center">
-
-      {/* Promotion modal */}
-      {pendingPromotion && (
-        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-xl p-6 flex flex-col items-center gap-4">
-            <p className="text-white text-lg font-semibold">Promote pawn to:</p>
-            <div className="flex gap-4">
-              {["Queen", "Rook", "Bishop", "Knight"].map(p => (
-                <button
-                  key={p}
-                  onClick={() => handlePromotionSelect(p[0].toLowerCase())}
-                  className="w-16 h-16 flex items-center justify-center bg-gray-600 hover:bg-yellow-500 rounded-lg transition-colors"
-                >
-                  <img src={`/ChessPieces/Light${p}.webp`} className="w-12 h-12" alt={p} />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Top bar — keep existing */}
       <div className="mb-4 flex items-center justify-center space-x-4">
         {timerEnabled && (
           <div className={`px-4 py-2 ${buttonBgClass} rounded`}>
@@ -917,7 +961,10 @@ export default function Game() {
         >
           {getStatusMessage()}
         </div>
-        <button onClick={() => setShowOpponentProfile(true)} className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}>
+        <button
+          onClick={() => setShowOpponentProfile(true)}
+          className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
+        >
           Opponent
         </button>
         <button
@@ -951,36 +998,6 @@ export default function Game() {
         </button>
       </div>
 
-      {/* Game over banner */}
-      {(gameStatus === "checkmate" || gameStatus === "stalemate" || gameStatus === "timeout") && (
-        <div className="mb-4 px-6 py-3 bg-red-700 text-white rounded-lg text-lg font-semibold">
-          {gameStatus === "checkmate" && `Checkmate! ${currentPlayer === "Light" ? "Dark" : "Light"} wins!`}
-          {gameStatus === "stalemate" && "Stalemate — draw!"}
-          {gameStatus === "timeout"   && `${currentPlayer} ran out of time!`}
-        </div>
-      )}
-
-      {/* Move feedback toast */}
-        {moveFeedback && (
-          <div className={`
-            fixed bottom-8 left-1/2 -translate-x-1/2
-            px-5 py-3 rounded-xl shadow-lg text-white font-semibold text-sm
-            flex items-center gap-2 transition-all z-50
-            ${moveFeedback.quality === "Good"       ? "bg-green-600"  :
-              moveFeedback.quality === "Inaccuracy" ? "bg-yellow-500" :
-              moveFeedback.quality === "Mistake"    ? "bg-orange-500" :
-                                                      "bg-red-600"}
-          `}>
-            <span>{
-              moveFeedback.quality === "Good"       ? "✅" :
-              moveFeedback.quality === "Inaccuracy" ? "⚠️" :
-              moveFeedback.quality === "Mistake"    ? "❌" : "💀"
-            }</span>
-            <span>{moveFeedback.move}</span>
-            <span className="font-bold">{moveFeedback.quality}</span>
-          </div>
-        )}
-
       <div className="flex">
         <div
           className={`grid grid-cols-8 gap-0 border-2 border-gray-800 ${isThinking ? "opacity-75 pointer-events-none" : ""}`}
@@ -999,6 +1016,7 @@ export default function Game() {
                 lastMove &&
                 lastMove.to[0] === rowIndex &&
                 lastMove.to[1] === colIndex;
+              const isSelected = selectedPiece?.row===rowIndex && selectedPiece?.col===colIndex;
               const imagePath = getPieceImage(piece);
 
               return (
@@ -1007,8 +1025,10 @@ export default function Game() {
                   onClick={() => handleSquareClick(rowIndex, colIndex)}
                   className={`
                     w-16 h-16 flex items-center justify-center cursor-pointer relative
-                    ${isDarkSquare ? "bg-gray-600" : "bg-gray-300"}
-                    ${isLastMoveFrom || isLastMoveTo ? "ring-2 ring-yellow-400 ring-inset" : ""}
+                    ${isLastMoveFrom? "bg-yellow-400 bg-opacity-20 border-black-100":
+                    isLastMoveTo? "bg-green-400 bg-opacity-20 border-black-100"
+                    : isDarkSquare ? "bg-gray-600" : "bg-gray-300"}
+                    ${isSelected? "ring-2 ring-yellow-400 ring-inset" : ""}
                     hover:opacity-75 transition-opacity
                   `}
                 >
@@ -1017,7 +1037,7 @@ export default function Game() {
                   )}
                   {isValidMoveSquare && !piece && (
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-4 h-4 bg-green-500 bg-opacity-50 rounded-full" />
+                      <div className="w-4 h-4 bg-green-500 bg-opacity-50 rounded-full"></div>
                     </div>
                   )}
                   {imagePath ? (
@@ -1033,7 +1053,6 @@ export default function Game() {
           )}
         </div>
 
-        {/* Move history — keep existing */}
         {historyEnabled && (
           <div className="ml-6 w-64 bg-gray-800 rounded-lg shadow-lg p-4">
             <h3 className="text-lg font-bold mb-3 text-center text-white">
@@ -1446,6 +1465,7 @@ export default function Game() {
                 MindfulMoves AI
               </h3>
             </div>
+
             <div className="space-y-3">
               <div className="flex justify-between items-center p-3 bg-gray-700 rounded">
                 <span className="text-gray-300">Name:</span>
@@ -1460,6 +1480,7 @@ export default function Game() {
                 <span className="text-white">400</span>
               </div>
             </div>
+
             <button
               onClick={() => setShowOpponentProfile(false)}
               className="mt-6 w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"

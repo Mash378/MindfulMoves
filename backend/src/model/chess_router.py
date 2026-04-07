@@ -22,6 +22,7 @@ _executor = ThreadPoolExecutor(max_workers=2)
 
 ELO_TO_SKILL = {1500: 3, 1600: 5, 1700: 7, 1800: 9}
 
+
 class NewGameRequest(BaseModel):
     player_color:  str = "white"
     bot_style:     str = "Balanced"
@@ -172,7 +173,7 @@ def make_move(req: MoveRequest):
         response["board"] = board_state(session)
         if board.is_game_over():
             response["status"] = "game_over"
-
+    print(f"DEBUG: [Transformer Model] move called for session {req.session_id}")
     return response
 
 
