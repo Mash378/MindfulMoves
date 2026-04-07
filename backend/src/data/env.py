@@ -11,5 +11,7 @@ class Env:
 
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
 
+    CHESS_MODEL_PATH: str = os.getenv("CHESS_MODEL_PATH", "")
+
 
 server_env = Env()

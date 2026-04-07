@@ -1,14 +1,32 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useSettings } from "./SettingsContext";
 
 export default function Login() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [newValue, setNewValue] = useState("");
+  const [confirmValue, setConfirmValue] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState("login");
+  
   const navigate = useNavigate();
-  const { theme } = useSettings();
+  const location = useLocation();
+  const { theme, changeUsername, setChangeUsername, changePassword, setChangePassword, setIsLoggedIn, setUsername } = useSettings();
+
+  // Check if we came from settings (and whether it was from game or not)
+  const fromGame = location.state?.fromGame === true;
+
+  useEffect(() => {
+    if (changeUsername) {
+      setMode("change-username");
+      setChangeUsername(false);
+    } else if (changePassword) {
+      setMode("change-password");
+      setChangePassword(false);
+    }
+  }, [changeUsername, changePassword, setChangeUsername, setChangePassword]);
 
   const pageBgClass = {
     light: "bg-white text-black",
@@ -50,7 +68,7 @@ export default function Login() {
     candy: "hover:text-pink-600",
   }[theme];
 
-  async function handleSubmit(e) {
+  async function handleLogin(e) {
     e.preventDefault();
     if (!name.trim()) {
       setError("Please enter your name");
@@ -80,8 +98,30 @@ export default function Login() {
         return;
       }
 
+      // Store in localStorage
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("playerName", name);
+
+      // Update React state
+      setIsLoggedIn(true);
+      setUsername(name);
+
+      // Create a new game on the backend
+      const gameRes = await fetch(`${import.meta.env.VITE_API_URL}/game/new`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.access_token}`,
+        },
+      });
+      if (!gameRes.ok) {
+        setError("Failed to create game");
+        return;
+      }
+      const gameData = await gameRes.json();
+      localStorage.setItem("gameId", gameData.game_id);
+      localStorage.setItem("currentFen", gameData.fen);
+
       navigate("/game");
     } catch (err) {
       clearTimeout(timeout);
@@ -94,6 +134,130 @@ export default function Login() {
       setLoading(false);
     }
   }
+
+  async function handleChangeUsername(e) {
+    e.preventDefault();
+    if (!newValue.trim()) {
+      setError("Please enter a new username");
+      return;
+    }
+    if (!password.trim()) {
+      setError("Please enter your password to confirm");
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+    const token = localStorage.getItem("token");
+    
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/auth/change-username`, {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          currentPassword: password,
+          newUsername: newValue 
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.detail || "Failed to change username");
+        return;
+      }
+
+      // Update localStorage and React state with new username
+      localStorage.setItem("playerName", newValue);
+      setUsername(newValue);
+      
+      // Navigate back to settings preserving the fromGame state
+      navigate("/settings", { state: { activeTab: "account", fromGame: fromGame } });
+    } catch (err) {
+      clearTimeout(timeout);
+      setError(
+        err.name === "AbortError"
+          ? "Request timed out"
+          : "Could not connect to server",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleChangePassword(e) {
+    e.preventDefault();
+    if (!newValue.trim()) {
+      setError("Please enter a new password");
+      return;
+    }
+    if (newValue !== confirmValue) {
+      setError("Passwords do not match");
+      return;
+    }
+    if (!password.trim()) {
+      setError("Please enter your current password");
+      return;
+    }
+
+    setError("");
+    setLoading(true);
+    const token = localStorage.getItem("token");
+    
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/auth/change-password`, {
+        method: "PUT",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ 
+          currentPassword: password,
+          newPassword: newValue 
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.detail || "Failed to change password");
+        return;
+      }
+
+      // Navigate back to settings preserving the fromGame state
+      navigate("/settings", { state: { activeTab: "account", fromGame: fromGame } });
+    } catch (err) {
+      clearTimeout(timeout);
+      setError(
+        err.name === "AbortError"
+          ? "Request timed out"
+          : "Could not connect to server",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const handleCancel = () => {
+    // Navigate back to settings preserving the fromGame state
+    navigate("/settings", { state: { activeTab: "account", fromGame: fromGame } });
+    // Reset all form fields
+    setName("");
+    setPassword("");
+    setNewValue("");
+    setConfirmValue("");
+    setError("");
+    setMode("login");
+  };
 
   return (
     <div
@@ -111,46 +275,150 @@ export default function Login() {
       </button>
 
       <div
-        className={`relative flex flex-col items-center p-10 rounded-lg shadow-lg w-96 h-[520px] ${pageBgClass}`}
+        className={`relative flex flex-col items-center p-10 rounded-lg shadow-lg w-96 min-h-[520px] ${pageBgClass}`}
       >
-        <h2 className="text-5xl font-bold">Login Page</h2>
+        {mode === "login" && (
+          <>
+            <h2 className="text-5xl font-bold">Login Page</h2>
+            <form onSubmit={handleLogin} className="flex flex-col items-center mt-24">
+              <input
+                type="text"
+                placeholder="Enter your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="px-4 py-2 mb-4 rounded-lg border-2 border-gray-400 w-64"
+              />
+              <input
+                type="password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="px-4 py-2 mb-4 rounded-lg border-2 border-gray-400 w-64"
+              />
 
-        <form
-          onSubmit={handleSubmit}
-          className="flex flex-col items-center mt-24"
-        >
-          <input
-            type="text"
-            placeholder="Enter your name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="px-4 py-2 mb-4 rounded-lg border-2 border-gray-400 w-64 "
-          />
-          <input
-            type="password"
-            placeholder="Enter your password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="px-4 py-2 mb-4 rounded-lg border-2 border-gray-400 w-64"
-          />
+              {error && <p className="absolute bottom-44 left-1/2 transform -translate-x-1/2 text-red-600 text-sm mb-4">{error}</p>}
 
-          {error && <p className="absolute bottom-44 left-1/2 transform -translate-x-1/2 text-red-600 text-sm mb-4">{error}</p>}
+              <button
+                type="submit"
+                disabled={loading}
+                className={`absolute bottom-32 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg transition ${buttonBgClass} ${buttonHoverClass} disabled:opacity-50`}
+              >
+                {loading ? "Logging in..." : "Submit"}
+              </button>
+            </form>
+            <button
+              type="button"
+              className={`absolute bottom-16 left-1/2 transform -translate-x-1/2 mt-4 px-6 py-3 text-2xl transition ${textBgClass} ${textHoverClass}`}
+              onClick={() => navigate("/signup")}
+            >
+              Sign Up
+            </button>
+          </>
+        )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={`absolute bottom-32 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg transition ${buttonBgClass} ${buttonHoverClass} disabled:opacity-50`}
-          >
-            {loading ? "Logging in..." : "Submit"}
-          </button>
-        </form>
-        <button
-          type="button"
-          className={`absolute bottom-16 left-1/2 transform -translate-x-1/2 mt-4 px-6 py-3 text-2xl transition ${textBgClass} ${textHoverClass}`}
-          onClick={() => navigate("/signup")}
-        >
-          Sign Up
-        </button>
+        {mode === "change-username" && (
+          <>
+            <h2 className="text-4xl font-bold mb-8">Change Username</h2>
+            <form onSubmit={handleChangeUsername} className="flex flex-col items-center w-full">
+              <input
+                type="text"
+                placeholder="Current username"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="px-4 py-2 mb-4 rounded-lg border-2 border-gray-400 w-64"
+                disabled={loading}
+              />
+              <input
+                type="text"
+                placeholder="New username"
+                value={newValue}
+                onChange={(e) => setNewValue(e.target.value)}
+                className="px-4 py-2 mb-4 rounded-lg border-2 border-gray-400 w-64"
+                disabled={loading}
+              />
+              <input
+                type="password"
+                placeholder="Current password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="px-4 py-2 mb-4 rounded-lg border-2 border-gray-400 w-64"
+                disabled={loading}
+              />
+
+              {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
+
+              <div className="flex gap-4 mt-4">
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="px-6 py-3 rounded-lg bg-gray-500 text-white hover:bg-gray-600 transition"
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={`px-6 py-3 rounded-lg transition ${buttonBgClass} ${buttonHoverClass} disabled:opacity-50`}
+                >
+                  {loading ? "Changing..." : "Change Username"}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+
+        {mode === "change-password" && (
+          <>
+            <h2 className="text-4xl font-bold mb-8">Change Password</h2>
+            <form onSubmit={handleChangePassword} className="flex flex-col items-center w-full">
+              <input
+                type="password"
+                placeholder="Current password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="px-4 py-2 mb-4 rounded-lg border-2 border-gray-400 w-64"
+                disabled={loading}
+              />
+              <input
+                type="password"
+                placeholder="New password"
+                value={newValue}
+                onChange={(e) => setNewValue(e.target.value)}
+                className="px-4 py-2 mb-4 rounded-lg border-2 border-gray-400 w-64"
+                disabled={loading}
+              />
+              <input
+                type="password"
+                placeholder="Confirm new password"
+                value={confirmValue}
+                onChange={(e) => setConfirmValue(e.target.value)}
+                className="px-4 py-2 mb-4 rounded-lg border-2 border-gray-400 w-64"
+                disabled={loading}
+              />
+
+              {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
+
+              <div className="flex gap-4 mt-4">
+                <button
+                  type="button"
+                  onClick={handleCancel}
+                  className="px-6 py-3 rounded-lg bg-gray-500 text-white hover:bg-gray-600 transition"
+                  disabled={loading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={`px-6 py-3 rounded-lg transition ${buttonBgClass} ${buttonHoverClass} disabled:opacity-50`}
+                >
+                  {loading ? "Changing..." : "Change Password"}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
       </div>
     </div>
   );

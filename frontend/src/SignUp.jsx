@@ -8,7 +8,7 @@ export default function SignUp() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { theme } = useSettings();
+  const { theme, setIsLoggedIn, setUsername } = useSettings();
 
   const pageBgClass = {
     light: "bg-white text-black",
@@ -80,8 +80,33 @@ export default function SignUp() {
         return;
       }
 
+      // Store in localStorage
       localStorage.setItem("token", data.access_token);
       localStorage.setItem("playerName", name);
+
+      // Update React state
+      setIsLoggedIn(true);
+      setUsername(name);
+
+      // Create a new game on the backend
+      const gameController = new AbortController();
+      const gameTimeout = setTimeout(() => gameController.abort(), 8000);
+      const gameRes = await fetch(`${import.meta.env.VITE_API_URL}/game/new`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${data.access_token}`,
+        },
+        signal: gameController.signal,
+      });
+      clearTimeout(gameTimeout);
+      if (!gameRes.ok) {
+        setError("Failed to create game");
+        return;
+      }
+      const gameData = await gameRes.json();
+      localStorage.setItem("gameId", gameData.game_id);
+      localStorage.setItem("currentFen", gameData.fen);
+
       navigate("/game");
     } catch (err) {
       clearTimeout(timeout);

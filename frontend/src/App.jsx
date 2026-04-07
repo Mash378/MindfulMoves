@@ -7,11 +7,13 @@ import Game from "./Game.jsx";
 import Leaderboard from "./Leaderboard.jsx";
 import Settings from "./Settings.jsx";
 import Credits from "./Credits.jsx";
-import { SettingsProvider } from "./SettingsContext.jsx"; 
+import { SettingsProvider } from "./SettingsContext.jsx";
 
 function App() {
   return (
-    <SettingsProvider> {}
+    <SettingsProvider>
+      {" "}
+      {}
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/signup" element={<SignUp />} />

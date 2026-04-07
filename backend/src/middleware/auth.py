@@ -3,7 +3,7 @@ from fastapi import Request, HTTPException, status
 from src.data.env import server_env
 
 
-def get_current_user(request: Request):
+def get_current_user(request: Request) -> dict[str, str]:
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(
