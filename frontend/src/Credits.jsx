@@ -33,7 +33,7 @@ export default function Credits() {
             <div className="text-xl">
                 <p>Developed by Check-Mates:</p>
                 <ul style={{ marginTop: '20px' }}>
-                <li>Mashroor Newaz - Team Lead</li>
+                <li>Mashroor Newaz - Team Lead, Backend Developer</li>
                 <li>Khang Tran - Scrum Master, Fullstack Developer</li>
                 <li>Jaden Nelson - Frontend Developer</li>
                 <li>Ariana Argyrakis - Frontend Developer</li>

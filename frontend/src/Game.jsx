@@ -1035,9 +1035,9 @@ export default function Game() {
         </div>
       )}
 
-      <div className="flex">
+      <div className="flex justify-center items-center w-full">
         <div
-          className={`grid grid-cols-8 gap-0 border-2 border-gray-800 ${isThinking ? "opacity-75 pointer-events-none" : ""}`}
+          className={`grid grid-cols-8 grid-rows-8 border-2 border-gray-800 w-[min(80vw,80vh)] h-[min(80vw,80vh)] ${isThinking ? "opacity-75 pointer-events-none" : ""}`}
         >
           {board.map((row, rowIndex) =>
             row.map((piece, colIndex) => {
@@ -1064,7 +1064,7 @@ export default function Game() {
                   key={`${rowIndex}-${colIndex}`}
                   onClick={() => handleSquareClick(rowIndex, colIndex)}
                   className={`
-                    w-16 h-16 flex items-center justify-center cursor-pointer relative
+                    flex items-center justify-center cursor-pointer relative
                     ${isLastMoveFrom ? "bg-yellow-400 bg-opacity-20" :
                       isLastMoveTo ? "bg-green-400 bg-opacity-20" :
                       isDarkSquare ? "bg-gray-600" : "bg-gray-300"}
@@ -1085,7 +1085,7 @@ export default function Game() {
                     <img
                       src={imagePath}
                       alt={piece}
-                      className="w-12 h-12 object-contain z-10"
+                      className="w-3/4 h-3/4 object-contain z-10"
                     />
                   ) : null}
                 </div>
