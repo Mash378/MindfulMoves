@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback,  useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSettings } from "./SettingsContext.jsx";
 import { fenToBoard, boardPositionToUci } from "./chessUtils.js";
@@ -34,6 +34,10 @@ export default function Game() {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState("user");
   const [lastMove, setLastMove] = useState(null);
+  const [isCheck, setIsCheck] = useState(false);
+  const [checkColor, setCheckColor] = useState(null);
+  const [showCheckmatePopup, setShowCheckmatePopup] = useState(false);
+  const [checkmateWinner, setCheckmateWinner] = useState(null);
   const [timer, setTimer] = useState({
     Light: 600,
     active: false,
@@ -58,6 +62,71 @@ export default function Game() {
   } = useSettings();
   
   const isFirstRender = useRef(true);
+  const moveHistoryRef = useRef(null);
+
+  // Check if a player has any legal moves
+  const hasAnyLegalMoves = (boardState, playerColor) => {
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) {
+        const piece = boardState[i][j];
+        if (piece && getPieceColor(piece) === playerColor) {
+          // Check if this piece has any legal moves
+          for (let targetRow = 0; targetRow < 8; targetRow++) {
+            for (let targetCol = 0; targetCol < 8; targetCol++) {
+              if (isValidMove(i, j, targetRow, targetCol, piece, boardState)) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+    }
+    return false;
+  };
+
+  // Check for checkmate
+  const isCheckmate = (boardState, kingColor) => {
+    // First check if the king is in check
+    const kingInCheck = isKingInCheck(boardState, kingColor);
+    if (!kingInCheck) return false;
+    
+    // Then check if there are any legal moves
+    return !hasAnyLegalMoves(boardState, kingColor);
+  };
+
+  // Check detection function (modified to accept boardState parameter)
+  const isKingInCheck = (boardState, kingColor) => {
+    let kingRow, kingCol;
+    
+    // Find the king
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) {
+        const piece = boardState[i][j];
+        if (piece === `${kingColor}King`) {
+          kingRow = i;
+          kingCol = j;
+          break;
+        }
+      }
+    }
+    
+    if (kingRow === undefined) return false;
+    
+    // Check if any opponent piece can attack the king
+    const opponentColor = kingColor === "Light" ? "Dark" : "Light";
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) {
+        const piece = boardState[i][j];
+        if (piece && getPieceColor(piece) === opponentColor) {
+          if (canPieceAttackSquare(i, j, kingRow, kingCol, piece, boardState)) {
+            return true;
+          }
+        }
+      }
+    }
+    
+    return false;
+  };
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -69,12 +138,11 @@ export default function Game() {
 
   const createNewGame = useCallback(async () => {
     try {
-      const isMagnus = difficulty === "magnus"; // Note: value in your radio is "magnus"
+      const isMagnus = difficulty === "magnus";
       const endpoint = isMagnus ? `${API_URL}/game/new` : `${API_URL}/chess/game/new`;
       
       let body = {};
       if (!isMagnus) {
-        // Map frontend difficulty to backend expectations
         const configMap = {
           easy:   { elo: 1500, style: "Balanced" },
           medium: { elo: 1600, style: "Balanced" },
@@ -103,9 +171,7 @@ export default function Game() {
       const data = await res.json();
       const id = data.game_id || data.session_id;
       const fen = isMagnus ? data.fen : data.board.fen;
-      //const id = isMagnus ? data.game_id : data.session_id;
       setGameId(id);
-      // setGameId(data.game_id);
       setCurrentFen(fen);
       setBoard(fenToBoard(fen));
       localStorage.setItem("gameId", id);
@@ -117,6 +183,10 @@ export default function Game() {
       setTimer({ Light: 600, active: false, startTime: null });
       setGameStatus("playing");
       setBackendStatus("active");
+      setIsCheck(false);
+      setCheckColor(null);
+      setShowCheckmatePopup(false);
+      setCheckmateWinner(null);
     } catch (err){
       console.error("Failed to create game", err);
     }
@@ -129,7 +199,7 @@ export default function Game() {
     if (name) {
       setPlayerName(name);
     } else {
-      setPlayerName("Guest"); // Set a default guest name
+      setPlayerName("Guest");
     }
 
     if (savedState) {
@@ -187,6 +257,55 @@ export default function Game() {
     lastMove,
   ]);
 
+  // Check for check and checkmate whenever board changes
+  useEffect(() => {
+    if (board.length === 0) return;
+    
+    // Check if Light (player) is in check
+    const lightInCheck = isKingInCheck(board, "Light");
+    // Check if Dark (AI) is in check
+    const darkInCheck = isKingInCheck(board, "Dark");
+    
+    // Check for checkmate
+    if (isCheckmate(board, "Light")) {
+      setShowCheckmatePopup(true);
+      setCheckmateWinner("Dark");
+      setBackendStatus("black_wins");
+      setGameStatus("checkmate");
+      return;
+    }
+    
+    if (isCheckmate(board, "Dark")) {
+      setShowCheckmatePopup(true);
+      setCheckmateWinner("Light");
+      setBackendStatus("white_wins");
+      setGameStatus("checkmate");
+      return;
+    }
+    
+    // Handle check display
+    if (lightInCheck) {
+      setIsCheck(true);
+      setCheckColor("Light");
+      const timer = setTimeout(() => {
+        setIsCheck(false);
+        setCheckColor(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    } else if (darkInCheck) {
+      setIsCheck(true);
+      setCheckColor("Dark");
+      const timer = setTimeout(() => {
+        setIsCheck(false);
+        setCheckColor(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    } else {
+      setIsCheck(false);
+      setCheckColor(null);
+    }
+  }, [board]);
+
   useEffect(() => {
     let interval;
     if (timer.active && gameStatus === "playing" && timerEnabled) {
@@ -208,6 +327,12 @@ export default function Game() {
     }
     return () => clearInterval(interval);
   }, [timer.active, gameStatus, timerEnabled]);
+
+  useEffect(() => {
+    if (moveHistoryRef.current && historyEnabled) {
+      moveHistoryRef.current.scrollTop = 0;
+    }
+  }, [moveHistory, historyEnabled]);
 
   const undoMove = async () => {
     if (moveHistory.length === 0 || isThinking) return;
@@ -239,7 +364,6 @@ export default function Game() {
       setGameStatus("playing");
       setMoveHistory((prev) => {
       const newHistory = prev.slice(0, -2);
-      // Highlight the move that is now the last one
       if (newHistory.length >= 1) {
         const lastEntry = newHistory[newHistory.length - 1];
         const from = typeof lastEntry.from === "string"
@@ -288,39 +412,19 @@ export default function Game() {
     endCol,
     capturedPiece,
   ) => {
-    const pieceType = getPieceType(piece);
     const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
     const ranks = ["8", "7", "6", "5", "4", "3", "2", "1"];
-
-    let notation = "";
-
-    if (pieceType !== "Pawn") {
-      const pieceLetters = {
-        King: "K",
-        Queen: "Q",
-        Rook: "R",
-        Bishop: "B",
-        Knight: "N",
-      };
-      notation += pieceLetters[pieceType] || "";
-    }
-
-    if (capturedPiece) {
-      if (pieceType === "Pawn") {
-        notation += files[startCol];
-      }
-      notation += "x";
-    }
-
-    notation += files[endCol] + ranks[endRow];
-
-    return notation;
+    
+    const startSquare = files[startCol] + ranks[startRow];
+    const endSquare = files[endCol] + ranks[endRow];
+    
+    return `${startSquare}-${endSquare}`;
   };
 
-  const isValidMove = (startRow, startCol, endRow, endCol, piece) => {
+  const isValidMove = (startRow, startCol, endRow, endCol, piece, currentBoard = board) => {
     const pieceType = getPieceType(piece);
     const pieceColor = getPieceColor(piece);
-    const targetPiece = board[endRow][endCol];
+    const targetPiece = currentBoard[endRow][endCol];
     const targetColor = getPieceColor(targetPiece);
 
     if (targetColor === pieceColor) return false;
@@ -336,10 +440,11 @@ export default function Game() {
           endCol,
           pieceColor,
           targetPiece,
+          currentBoard,
         );
         break;
       case "Rook":
-        isValidBasicMove = isValidRookMove(startRow, startCol, endRow, endCol);
+        isValidBasicMove = isValidRookMove(startRow, startCol, endRow, endCol, currentBoard);
         break;
       case "Knight":
         isValidBasicMove = isValidKnightMove(
@@ -350,15 +455,10 @@ export default function Game() {
         );
         break;
       case "Bishop":
-        isValidBasicMove = isValidBishopMove(
-          startRow,
-          startCol,
-          endRow,
-          endCol,
-        );
+        isValidBasicMove = isValidBishopMove(startRow, startCol, endRow, endCol, currentBoard);
         break;
       case "Queen":
-        isValidBasicMove = isValidQueenMove(startRow, startCol, endRow, endCol);
+        isValidBasicMove = isValidQueenMove(startRow, startCol, endRow, endCol, currentBoard);
         break;
       case "King":
         isValidBasicMove = isValidKingMove(startRow, startCol, endRow, endCol);
@@ -375,6 +475,7 @@ export default function Game() {
       endRow,
       endCol,
       pieceColor,
+      currentBoard,
     );
   };
 
@@ -384,8 +485,9 @@ export default function Game() {
     endRow,
     endCol,
     pieceColor,
+    currentBoard,
   ) => {
-    const tempBoard = board.map((row) => [...row]);
+    const tempBoard = currentBoard.map((row) => [...row]);
 
     const movingPiece = tempBoard[startRow][startCol];
     tempBoard[endRow][endCol] = movingPiece;
@@ -527,6 +629,7 @@ export default function Game() {
     endCol,
     color,
     targetPiece,
+    currentBoard,
   ) => {
     const direction = color === "Light" ? -1 : 1;
     const startRowPawn = color === "Light" ? 6 : 1;
@@ -544,7 +647,7 @@ export default function Game() {
       endRow === startRow + 2 * direction &&
       startRow === startRowPawn &&
       !targetPiece &&
-      !board[startRow + direction][startCol]
+      !currentBoard[startRow + direction][startCol]
     ) {
       return true;
     }
@@ -560,20 +663,20 @@ export default function Game() {
     return false;
   };
 
-  const isValidRookMove = (startRow, startCol, endRow, endCol) => {
+  const isValidRookMove = (startRow, startCol, endRow, endCol, currentBoard) => {
     if (startRow !== endRow && startCol !== endCol) return false;
 
     if (startRow === endRow) {
       const minCol = Math.min(startCol, endCol);
       const maxCol = Math.max(startCol, endCol);
       for (let col = minCol + 1; col < maxCol; col++) {
-        if (board[startRow][col]) return false;
+        if (currentBoard[startRow][col]) return false;
       }
     } else {
       const minRow = Math.min(startRow, endRow);
       const maxRow = Math.max(startRow, endRow);
       for (let row = minRow + 1; row < maxRow; row++) {
-        if (board[row][startCol]) return false;
+        if (currentBoard[row][startCol]) return false;
       }
     }
     return true;
@@ -585,7 +688,7 @@ export default function Game() {
     return (rowDiff === 2 && colDiff === 1) || (rowDiff === 1 && colDiff === 2);
   };
 
-  const isValidBishopMove = (startRow, startCol, endRow, endCol) => {
+  const isValidBishopMove = (startRow, startCol, endRow, endCol, currentBoard) => {
     if (Math.abs(endRow - startRow) !== Math.abs(endCol - startCol))
       return false;
 
@@ -595,17 +698,17 @@ export default function Game() {
     let col = startCol + colStep;
 
     while (row !== endRow && col !== endCol) {
-      if (board[row][col]) return false;
+      if (currentBoard[row][col]) return false;
       row += rowStep;
       col += colStep;
     }
     return true;
   };
 
-  const isValidQueenMove = (startRow, startCol, endRow, endCol) => {
+  const isValidQueenMove = (startRow, startCol, endRow, endCol, currentBoard) => {
     return (
-      isValidRookMove(startRow, startCol, endRow, endCol) ||
-      isValidBishopMove(startRow, startCol, endRow, endCol)
+      isValidRookMove(startRow, startCol, endRow, endCol, currentBoard) ||
+      isValidBishopMove(startRow, startCol, endRow, endCol, currentBoard)
     );
   };
 
@@ -620,7 +723,7 @@ export default function Game() {
     const moves = [];
     for (let i = 0; i < 8; i++) {
       for (let j = 0; j < 8; j++) {
-        if (isValidMove(row, col, i, j, piece)) {
+        if (isValidMove(row, col, i, j, piece, board)) {
           moves.push([i, j]);
         }
       }
@@ -628,99 +731,12 @@ export default function Game() {
     return moves;
   };
 
-  // const isKingInCheck = (color, currentBoard) => {
-  //   let kingRow, kingCol;
-  //
-  //   for (let i = 0; i < 8; i++) {
-  //     for (let j = 0; j < 8; j++) {
-  //       const piece = currentBoard[i][j];
-  //       if (piece === `${color}King`) {
-  //         kingRow = i;
-  //         kingCol = j;
-  //         break;
-  //       }
-  //     }
-  //   }
-  //
-  //   const opponentColor = color === 'Light' ? 'Dark' : 'Light';
-  //
-  //   for (let i = 0; i < 8; i++) {
-  //     for (let j = 0; j < 8; j++) {
-  //       const piece = currentBoard[i][j];
-  //
-  //       if (piece && getPieceColor(piece) === opponentColor) {
-  //         if (canPieceAttackSquare(i, j, kingRow, kingCol, piece, currentBoard)) {
-  //           return true;
-  //         }
-  //       }
-  //     }
-  //   }
-  //
-  //   return false;
-  // };
-
-  // const isKingInCheckmate = (color, currentBoard) => {
-  //   if (!isKingInCheck(color, currentBoard)) {
-  //     return false;
-  //   }
-  //
-  //   for (let r = 0; r < 8; r++) {
-  //     for (let c = 0; c < 8; c++) {
-  //       const piece = currentBoard[r][c];
-  //
-  //       if (piece && getPieceColor(piece) === color) {
-  //         for (let r2 = 0; r2 < 8; r2++) {
-  //           for (let c2 = 0; c2 < 8; c2++) {
-  //             if (isValidMove(r, c, r2, c2, piece)) {
-  //               const testBoard = currentBoard.map(row => [...row]);
-  //               testBoard[r2][c2] = piece;
-  //               testBoard[r][c] = "";
-  //
-  //               if (!isKingInCheck(color, testBoard)) {
-  //                 return false;
-  //               }
-  //             }
-  //           }
-  //         }
-  //       }
-  //     }
-  //   }
-  //
-  //   return true;
-  // };
-
-  // const undoMove = () => {
-  //   if (moveHistory.length === 0) return;
-  //
-  //   const lastMoveData = moveHistory[moveHistory.length - 1];
-  //   const newBoard = board.map(row => [...row]);
-  //
-  //   newBoard[lastMoveData.from[0]][lastMoveData.from[1]] = lastMoveData.piece;
-  //   newBoard[lastMoveData.to[0]][lastMoveData.to[1]] = lastMoveData.captured || "";
-  //
-  //   setBoard(newBoard);
-  //   setMoveHistory(prev => prev.slice(0, -1));
-  //   setCurrentPlayer(lastMoveData.player);
-  //   setLastMove(null);
-  //   setGameStatus("playing");
-  //
-  //   if (timerEnabled) {
-  //     setTimer(prev => ({
-  //       ...prev,
-  //       active: false
-  //     }));
-  //   }
-  // };
-
   const handleSquareClick = (row, col) => {
-    // Block interaction when AI is thinking or game is over
-    if (isThinking || backendStatus !== "active") return;
+    if (isThinking || backendStatus !== "active" || gameStatus === "checkmate") return;
 
     const piece = board[row][col];
     const pieceColor = getPieceColor(piece);
 
-    // Only allow selecting Light (white) pieces — player is always white
-    //Todo: Implement color choosing later
     if (!selectedPiece && piece && pieceColor === "Light") {
       setSelectedPiece({ row, col });
       setValidMoves(getValidMoves(row, col));
@@ -749,10 +765,9 @@ export default function Game() {
       const movingPiece = board[startRow][startCol];
       const capturedPiece = board[endRow][endCol];
   
-      // Determine promotion: pawn reaching rank 8 (row 0 for Light)
       let promotionPiece = null;
       if (getPieceType(movingPiece) === "Pawn" && endRow === 0) {
-        promotionPiece = "q"; // auto-promote to queen
+        promotionPiece = "q";
       }
   
       const uci = boardPositionToUci(
@@ -763,15 +778,14 @@ export default function Game() {
         promotionPiece,
       );
   
-      // Record player's move in history
       if (historyEnabled) {
         const notation = getChessNotation(
-          movingPiece,
+          null,
           startRow,
           startCol,
           endRow,
           endCol,
-          capturedPiece,
+          null,
         );
         setMoveHistory((prev) => [
           ...prev,
@@ -788,17 +802,14 @@ export default function Game() {
   
       setLastMove({ from: [startRow, startCol], to: [endRow, endCol] });
   
-      // Optimistically update the board with player's move
       const newBoard = board.map((row) => [...row]);
       newBoard[endRow][endCol] = promotionPiece ? "LightQueen" : movingPiece;
       newBoard[startRow][startCol] = "";
       setBoard(newBoard);
       
-      // Send move to backend
       setIsThinking(true);
       try {
         const isMagnus = difficulty.toLowerCase().includes("magnus");
-
 
         const endpoint = isMagnus 
           ? `${API_URL}/game/${gameId}/move` 
@@ -818,10 +829,8 @@ export default function Game() {
             navigate("/signup");
             return;
           }
-          // On error (e.g. illegal move, out of sync), resync from backend
           const errData = await res.json().catch(() => null);
           if (res.status === 409 && errData?.detail?.server_fen) {
-            // Board out of sync — resync from server FEN
             const serverFen = errData.detail.server_fen;
             setCurrentFen(serverFen);
             setBoard(fenToBoard(serverFen));
@@ -836,14 +845,13 @@ export default function Game() {
         const isGameOver = isMagnus 
         ? !!data.game_over 
         : !!data.board?.is_game_over;
-        // Record AI move in history
+        
         if (historyEnabled && botMoveUci) {
           const aiFrom = botMoveUci.slice(0, 2);
           const aiTo = botMoveUci.slice(2, 4);
           const [afr, afc] = uciSquareToCoords(aiFrom);
           const [atr, atc] = uciSquareToCoords(aiTo);
           setLastMove({ from: [afr, afc], to: [atr, atc] });
-          //setLastMove({ from: aiFrom, to: aiTo });
           setMoveHistory((prev) => [
             ...prev,
             {
@@ -857,7 +865,6 @@ export default function Game() {
           ]);
         }
   
-        // Update board from backend FEN (source of truth)
         setCurrentFen(backendFen);
         localStorage.setItem("currentFen", backendFen);
         setBoard(fenToBoard(backendFen));
@@ -873,7 +880,6 @@ export default function Game() {
           setGameStatus("playing");
         }
       } catch {
-        // Network error — revert to previous state
         setBoard(board);
       } finally {
         setIsThinking(false);
@@ -882,6 +888,8 @@ export default function Game() {
   
 
   const handleNewGame = async () => {
+    setShowCheckmatePopup(false);
+    setCheckmateWinner(null);
     await createNewGame();
   };
 
@@ -956,6 +964,7 @@ export default function Game() {
     sky: "hover:bg-blue-600",
     candy: "hover:bg-purple-500",
   }[theme];
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center">
       <div className="mb-4 flex items-center justify-center space-x-4">
@@ -1016,6 +1025,16 @@ export default function Game() {
         </button>
       </div>
 
+      {/* Check Message Display */}
+      {isCheck && (
+        <div className={`fixed top-24 left-1/2 transform -translate-x-1/2 z-50 animate-pulse
+          ${checkColor === "Light" ? "bg-yellow-500" : "bg-red-500"} 
+          text-white px-6 py-3 rounded-lg shadow-lg text-xl font-bold`}
+        >
+          ⚠️ CHECK! {checkColor === "Light" ? "Your king" : "Opponent's king"} is in check! ⚠️
+        </div>
+      )}
+
       <div className="flex">
         <div
           className={`grid grid-cols-8 gap-0 border-2 border-gray-800 ${isThinking ? "opacity-75 pointer-events-none" : ""}`}
@@ -1035,6 +1054,9 @@ export default function Game() {
                 lastMove.to[0] === rowIndex &&
                 lastMove.to[1] === colIndex;
               const isSelected = selectedPiece?.row===rowIndex && selectedPiece?.col===colIndex;
+              const isKingInCheckNow = isCheck && 
+                ((piece === "LightKing" && checkColor === "Light") || 
+                 (piece === "DarkKing" && checkColor === "Dark"));
               const imagePath = getPieceImage(piece);
 
               return (
@@ -1043,10 +1065,11 @@ export default function Game() {
                   onClick={() => handleSquareClick(rowIndex, colIndex)}
                   className={`
                     w-16 h-16 flex items-center justify-center cursor-pointer relative
-                    ${isLastMoveFrom? "bg-yellow-400 bg-opacity-20 border-black-100":
-                    isLastMoveTo? "bg-green-400 bg-opacity-20 border-black-100"
-                    : isDarkSquare ? "bg-gray-600" : "bg-gray-300"}
-                    ${isSelected? "ring-2 ring-yellow-400 ring-inset" : ""}
+                    ${isLastMoveFrom ? "bg-yellow-400 bg-opacity-20" :
+                      isLastMoveTo ? "bg-green-400 bg-opacity-20" :
+                      isDarkSquare ? "bg-gray-600" : "bg-gray-300"}
+                    ${isSelected ? "ring-2 ring-yellow-400 ring-inset" : ""}
+                    ${isKingInCheckNow ? "ring-4 ring-red-500 ring-inset animate-pulse" : ""}
                     hover:opacity-75 transition-opacity
                   `}
                 >
@@ -1072,81 +1095,91 @@ export default function Game() {
         </div>
 
         {historyEnabled && (
-          <div className="ml-6 w-64 bg-gray-800 rounded-lg shadow-lg p-4">
+          <div className="ml-6 w-64 bg-gray-800 rounded-lg shadow-lg p-4 flex flex-col h-[calc(100vh-200px)]">
             <h3 className="text-lg font-bold mb-3 text-center text-white">
               Move History
             </h3>
-            <div className="h-96 overflow-y-auto">
+            <div 
+              ref={moveHistoryRef}
+              className="flex-1 overflow-y-auto"
+            >
               {moveHistory.length === 0 ? (
                 <p className="text-gray-400 text-center">No moves yet</p>
               ) : (
                 <div className="space-y-2">
-                  {Array.from({
-                    length: Math.ceil(moveHistory.length / 2),
-                  }).map((_, moveNumber) => {
-                    const whiteMove = moveHistory[moveNumber * 2];
-                    const blackMove = moveHistory[moveNumber * 2 + 1];
-
-                    return (
+                  {(() => {
+                    const pairedMoves = [];
+                    for (let i = 0; i < moveHistory.length; i += 2) {
+                      pairedMoves.push({
+                        moveNumber: i / 2 + 1,
+                        whiteMove: moveHistory[i],
+                        blackMove: moveHistory[i + 1]
+                      });
+                    }
+                    return pairedMoves.slice().reverse().map((pair) => (
                       <div
-                        key={moveNumber}
+                        key={pair.moveNumber}
                         className="flex justify-between items-center p-2 bg-gray-700 rounded text-white"
                       >
                         <span className="font-mono w-8 text-gray-400">
-                          {moveNumber + 1}.
+                          {pair.moveNumber}.
                         </span>
                         <span className="font-mono flex-1 ml-2">
-                          {whiteMove ? whiteMove.notation : ""}
+                          {pair.whiteMove ? pair.whiteMove.notation : ""}
                         </span>
                         <span className="font-mono flex-1 ml-4">
-                          {blackMove ? blackMove.notation : ""}
+                          {pair.blackMove ? pair.blackMove.notation : ""}
                         </span>
                       </div>
-                    );
-                  })}
+                    ));
+                  })()}
                 </div>
               )}
             </div>
-            <div className="mt-3 text-sm text-gray-400 text-center">
+            <div className="mt-3 text-sm text-gray-400 text-center pt-2 border-t border-gray-700">
               {moveHistory.length} move{moveHistory.length !== 1 ? "s" : ""}
             </div>
           </div>
         )}
       </div>
 
-      {/* Game Over Overlay */}
-      {backendStatus !== "active" && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40">
-          <div className="bg-gray-800 rounded-lg p-8 text-center shadow-xl">
-            <h2
-              className={`text-4xl font-bold mb-4 ${
-                backendStatus === "white_wins"
-                  ? "text-green-400"
-                  : backendStatus === "black_wins"
-                    ? "text-red-400"
-                    : "text-yellow-400"
-              }`}
-            >
-              {getStatusMessage()}
-            </h2>
-            <p className="text-gray-300 mb-6">
-              {backendStatus === "white_wins" &&
-                "Checkmate! You defeated the AI."}
-              {backendStatus === "black_wins" &&
-                "Checkmate! The AI won this time."}
-              {backendStatus === "draw" && "The game ended in a draw."}
-            </p>
-            <button
-              onClick={handleNewGame}
-              className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-lg"
-            >
-              Play Again
-            </button>
+      {/* Checkmate Popup */}
+      {showCheckmatePopup && checkmateWinner && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 animate-fade-in">
+          <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-8 text-center shadow-2xl max-w-md w-full mx-4 transform animate-bounce-in">
+            <div className="mb-6">
+              <div className="text-6xl mb-4">
+                {checkmateWinner === "Light" ? "🏆" : "💀"}
+              </div>
+              <h2 className="text-4xl font-bold mb-2 text-white">
+                Checkmate!
+              </h2>
+              <p className="text-xl text-gray-300">
+                {checkmateWinner === "Light" 
+                  ? "Congratulations! You won!" 
+                  : "Game Over! The AI wins!"}
+              </p>
+            </div>
+            
+            <div className="space-y-3">
+              <button
+                onClick={handleNewGame}
+                className="w-full px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all transform hover:scale-105 text-lg font-semibold"
+              >
+                Play New Game
+              </button>
+              <button
+                onClick={handleReturnHome}
+                className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all transform hover:scale-105 text-lg font-semibold"
+              >
+                Return to Home
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Settings Modal - Formatted like main settings screen */}
+      {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div
@@ -1163,7 +1196,6 @@ export default function Game() {
             </div>
 
             <div className="flex flex-1 overflow-hidden">
-              {/* Settings Sidebar */}
               <div
                 className={`w-1/4 border-r flex flex-col ${modalSidebarClass}`}
               >
@@ -1221,9 +1253,7 @@ export default function Game() {
                 )}
               </div>
 
-              {/* Settings Content */}
               <div className="flex-1 p-6 overflow-y-auto">
-                {/* User Profile Tab */}
                 {settingsTab === "user" && (
                   <div className="space-y-4">
                     <h2 className="text-2xl font-semibold mb-8">
@@ -1279,7 +1309,6 @@ export default function Game() {
                   </div>
                 )}
 
-                {/* Difficulty Tab */}
                 {settingsTab === "difficulty" && (
                   <div className="space-y-4">
                     <h2 className="text-2xl font-semibold mb-8">
@@ -1301,7 +1330,7 @@ export default function Game() {
                           onChange={() => {
                           if (moveHistory.length > 0) {
                             if (window.confirm("Changing difficulty will start a new game. Continue?")) {
-                              setDifficulty("easy"); // or whichever value
+                              setDifficulty("easy");
                             }
                           } else {
                             setDifficulty("easy");
@@ -1320,7 +1349,7 @@ export default function Game() {
                           onChange={() => {
                           if (moveHistory.length > 0) {
                             if (window.confirm("Changing difficulty will start a new game. Continue?")) {
-                              setDifficulty("medium"); // or whichever value
+                              setDifficulty("medium");
                             }
                           } else {
                             setDifficulty("medium");
@@ -1339,7 +1368,7 @@ export default function Game() {
                           onChange={() => {
                           if (moveHistory.length > 0) {
                             if (window.confirm("Changing difficulty will start a new game. Continue?")) {
-                              setDifficulty("hard"); // or whichever value
+                              setDifficulty("hard");
                             }
                           } else {
                             setDifficulty("hard");
@@ -1367,7 +1396,7 @@ export default function Game() {
                             onChange={() => {
                           if (moveHistory.length > 0) {
                             if (window.confirm("Changing difficulty will start a new game. Continue?")) {
-                              setDifficulty("magnus"); // or whichever value
+                              setDifficulty("magnus");
                             }
                           } else {
                             setDifficulty("magnus");
@@ -1382,7 +1411,6 @@ export default function Game() {
                   </div>
                 )}
 
-                {/* Theme Tab */}
                 {settingsTab === "theme" && (
                   <div className="space-y-4">
                     <h2 className="text-2xl font-semibold mb-10">
@@ -1414,7 +1442,6 @@ export default function Game() {
                   </div>
                 )}
 
-                {/* Game Display Tab */}
                 {settingsTab === "game display" && (
                   <div className="space-y-6 text-lg">
                     <h2 className="text-2xl font-semibold mb-16">
@@ -1495,7 +1522,6 @@ export default function Game() {
                   </div>
                 )}
 
-                {/* Account Settings Tab */}
                 {settingsTab === "account" && isLoggedIn && (
                   <div className="space-y-4">
                     <h2 className="text-2xl font-semibold mb-8">Account</h2>
