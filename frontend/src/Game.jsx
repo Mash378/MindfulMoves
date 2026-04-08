@@ -1037,7 +1037,7 @@ export default function Game() {
 
       <div className="flex justify-center items-center w-full">
         <div
-          className={`grid grid-cols-8 grid-rows-8 border-2 border-gray-800 w-[min(80vw,80vh)] h-[min(80vw,80vh)] ${isThinking ? "opacity-75 pointer-events-none" : ""}`}
+          className={`grid grid-cols-8 grid-rows-8 border-2 border-gray-800 w-[min(73vw,73vh)] h-[min(73vw,73vh)] ${isThinking ? "opacity-75 pointer-events-none" : ""}`}
         >
           {board.map((row, rowIndex) =>
             row.map((piece, colIndex) => {
