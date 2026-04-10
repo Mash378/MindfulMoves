@@ -1,5 +1,6 @@
 import torch
 import chess
+import chess.engine
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel, PeftConfig
 import os
@@ -7,6 +8,13 @@ import warnings
 
 class ChessModel:
     def __init__(self, model_path):
+        #Load Stockfish
+        try:
+            self.engine = chess.engine.SimpleEngine.popen_uci("stockfish")
+        except Exception:
+            self.engine = None
+
+        #Load model
         self.model_path = model_path
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
@@ -44,24 +52,24 @@ class ChessModel:
         inputs = self.tokenizer(context, return_tensors="pt", truncation=True, max_length=512).to(self.model.device)
 
         #No gradients saved
-        with torch.no_grad():
+        with torch.inference_mode():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=6,
+                max_new_tokens=10,
                 num_beams=top_k,
                 num_return_sequences=top_k,
                 pad_token_id=self.tokenizer.eos_token_id,
-                output_scores=True,
-                return_dict_in_generate=True
+                do_sample=False
             )
 
         #Decode predictions
         moves = []
-        for i, output in enumerate(outputs.sequences):
+        for output in outputs:
             new_tokens = output[inputs['input_ids'].shape[1]:]
             pred_text = self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
-            predicted_move = pred_text.split()[0] if pred_text else ""
-            moves.append(predicted_move)
+            first_move = pred_text.split()[0] if pred_text else ""
+            moves.append(first_move)
+        moves = list(dict.fromkeys(moves))
 
         #Recreate the position
         board = chess.Board()
@@ -82,7 +90,33 @@ class ChessModel:
         
         if not legal_moves:
             return {"error": "No legal moves predicted"}
+        if self.engine and len(legal_moves) > 1:
+            best_move = self.pick_best_move(legal_moves, board)
+            legal_moves = [best_move] + [m for m in legal_moves if m != best_move]
+
         return {
             "move": legal_moves[0],
             "alternatives": legal_moves[1:top_k]
         }
+    
+    def pick_best_move(self, moves, board):
+        if not self.engine:
+            return moves[0]
+        try:
+            best = moves[0]
+            best_score = float('-inf')
+            for move in moves:
+                try:
+                    chess_move = board.parse_san(move)
+                    board.push(chess_move)
+                    info = self.engine.analyse(board, chess.engine.Limit(depth=6))
+                    score = info["score"].relative.score(mate_score=10000)
+                    board.pop()
+                    if score is not None and score > best_score:
+                        best_score = score
+                        best = move
+                except:
+                    continue
+            return best
+        except Exception:
+            return moves[0]
