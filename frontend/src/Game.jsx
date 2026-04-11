@@ -14,8 +14,8 @@ function apiHeaders() {
 }
 
 function uciSquareToCoords(square) {
-  const col = square.charCodeAt(0) - "a".charCodeAt(0); // 0-7
-  const row = 8 - parseInt(square[1], 10);              // 0-7
+  const col = square.charCodeAt(0) - "a".charCodeAt(0);
+  const row = 8 - parseInt(square[1], 10); 
   return [row, col];
 }
 
@@ -36,12 +36,22 @@ export default function Game() {
   const [lastMove, setLastMove] = useState(null);
   const [isCheck, setIsCheck] = useState(false);
   const [checkColor, setCheckColor] = useState(null);
-  const [showCheckmatePopup, setShowCheckmatePopup] = useState(false);
   const [checkmateWinner, setCheckmateWinner] = useState(null);
+  const [isStalemate, setIsStalemate] = useState(false);
   const [timer, setTimer] = useState({
     Light: 600,
     active: false,
-    startTime: null,
+    hasStarted: false,
+  });
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+  const [castleRights, setCastleRights] = useState({
+    whiteKingMoved: false,
+    whiteQueenRookMoved: false,
+    whiteKingRookMoved: false,
+    blackKingMoved: false,
+    blackQueenRookMoved: false,
+    blackKingRookMoved: false,
   });
   const navigate = useNavigate();
 
@@ -64,13 +74,11 @@ export default function Game() {
   const isFirstRender = useRef(true);
   const moveHistoryRef = useRef(null);
 
-  // Check if a player has any legal moves
   const hasAnyLegalMoves = (boardState, playerColor) => {
     for (let i = 0; i < 8; i++) {
       for (let j = 0; j < 8; j++) {
         const piece = boardState[i][j];
         if (piece && getPieceColor(piece) === playerColor) {
-          // Check if this piece has any legal moves
           for (let targetRow = 0; targetRow < 8; targetRow++) {
             for (let targetCol = 0; targetCol < 8; targetCol++) {
               if (isValidMove(i, j, targetRow, targetCol, piece, boardState)) {
@@ -84,21 +92,23 @@ export default function Game() {
     return false;
   };
 
-  // Check for checkmate
   const isCheckmate = (boardState, kingColor) => {
-    // First check if the king is in check
     const kingInCheck = isKingInCheck(boardState, kingColor);
     if (!kingInCheck) return false;
     
-    // Then check if there are any legal moves
     return !hasAnyLegalMoves(boardState, kingColor);
   };
 
-  // Check detection function (modified to accept boardState parameter)
+  const isStalematePosition = (boardState, currentPlayerColor) => {
+    const kingInCheck = isKingInCheck(boardState, currentPlayerColor);
+    if (kingInCheck) return false;
+    
+    return !hasAnyLegalMoves(boardState, currentPlayerColor);
+  };
+
   const isKingInCheck = (boardState, kingColor) => {
     let kingRow, kingCol;
     
-    // Find the king
     for (let i = 0; i < 8; i++) {
       for (let j = 0; j < 8; j++) {
         const piece = boardState[i][j];
@@ -112,7 +122,6 @@ export default function Game() {
     
     if (kingRow === undefined) return false;
     
-    // Check if any opponent piece can attack the king
     const opponentColor = kingColor === "Light" ? "Dark" : "Light";
     for (let i = 0; i < 8; i++) {
       for (let j = 0; j < 8; j++) {
@@ -125,6 +134,54 @@ export default function Game() {
       }
     }
     
+    return false;
+  };
+
+  const canCastle = (color, kingSide, currentBoard, castleState) => {
+    const row = color === "Light" ? 7 : 0;
+    const kingCol = 4;
+    const rookCol = kingSide ? 7 : 0;
+    const targetCol = kingSide ? 6 : 2;
+    
+    if (color === "Light") {
+      if (castleState.whiteKingMoved) return false;
+      if (kingSide && castleState.whiteKingRookMoved) return false;
+      if (!kingSide && castleState.whiteQueenRookMoved) return false;
+    } else {
+      if (castleState.blackKingMoved) return false;
+      if (kingSide && castleState.blackKingRookMoved) return false;
+      if (!kingSide && castleState.blackQueenRookMoved) return false;
+    }
+    
+    const rookPiece = currentBoard[row][rookCol];
+    if (!rookPiece || getPieceType(rookPiece) !== "Rook") return false;
+    
+    const step = kingSide ? 1 : -1;
+    for (let col = kingCol + step; col !== rookCol; col += step) {
+      if (currentBoard[row][col]) return false;
+    }
+    
+    for (let col = kingCol; col !== targetCol + step; col += step) {
+      if (isSquareUnderAttack(row, col, color, currentBoard)) {
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  const isSquareUnderAttack = (row, col, color, currentBoard) => {
+    const opponentColor = color === "Light" ? "Dark" : "Light";
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; j++) {
+        const piece = currentBoard[i][j];
+        if (piece && getPieceColor(piece) === opponentColor) {
+          if (canPieceAttackSquare(i, j, row, col, piece, currentBoard)) {
+            return true;
+          }
+        }
+      }
+    }
     return false;
   };
 
@@ -179,18 +236,32 @@ export default function Game() {
       setSelectedPiece(null);
       setValidMoves([]);
       setMoveHistory([]);
+      setUndoStack([]);
+      setRedoStack([]);
       setLastMove(null);
-      setTimer({ Light: 600, active: false, startTime: null });
+      setCastleRights({
+        whiteKingMoved: false,
+        whiteQueenRookMoved: false,
+        whiteKingRookMoved: false,
+        blackKingMoved: false,
+        blackQueenRookMoved: false,
+        blackKingRookMoved: false,
+      });
+      setTimer({ 
+        Light: timerDuration, 
+        active: false,
+        hasStarted: false,
+      });
       setGameStatus("playing");
       setBackendStatus("active");
       setIsCheck(false);
       setCheckColor(null);
-      setShowCheckmatePopup(false);
       setCheckmateWinner(null);
+      setIsStalemate(false);
     } catch (err){
       console.error("Failed to create game", err);
     }
-  }, [navigate, difficulty]);
+  }, [navigate, difficulty, timerDuration]);
 
   useEffect(() => {
     const savedState = localStorage.getItem("gameState");
@@ -208,11 +279,21 @@ export default function Game() {
       setGameStatus(parsed.gameStatus);
       setBackendStatus(parsed.backendStatus || "active");
       setMoveHistory(parsed.moveHistory);
+      setUndoStack(parsed.undoStack || []);
+      setRedoStack(parsed.redoStack || []);
       setTimer(parsed.timer);
       setPlayerName(parsed.playerName);
       setGameId(parsed.gameId || "");
       setCurrentFen(parsed.currentFen || "");
       setLastMove(parsed.lastMove || null);
+      setCastleRights(parsed.castleRights || {
+        whiteKingMoved: false,
+        whiteQueenRookMoved: false,
+        whiteKingRookMoved: false,
+        blackKingMoved: false,
+        blackQueenRookMoved: false,
+        blackKingRookMoved: false,
+      });
       localStorage.removeItem("gameState");
       return;
     }
@@ -237,11 +318,14 @@ export default function Game() {
         gameStatus,
         backendStatus,
         moveHistory,
+        undoStack,
+        redoStack,
         timer,
         playerName,
         gameId,
         currentFen,
         lastMove,
+        castleRights,
       };
       localStorage.setItem("gameState", JSON.stringify(gameState));
     }
@@ -250,83 +334,103 @@ export default function Game() {
     gameStatus,
     backendStatus,
     moveHistory,
+    undoStack,
+    redoStack,
     timer,
     playerName,
     gameId,
     currentFen,
     lastMove,
+    castleRights,
   ]);
-
-  // Check for check and checkmate whenever board changes
-  useEffect(() => {
-    if (board.length === 0) return;
-    
-    // Check if Light (player) is in check
-    const lightInCheck = isKingInCheck(board, "Light");
-    // Check if Dark (AI) is in check
-    const darkInCheck = isKingInCheck(board, "Dark");
-    
-    // Check for checkmate
-    if (isCheckmate(board, "Light")) {
-      setShowCheckmatePopup(true);
-      setCheckmateWinner("Dark");
-      setBackendStatus("black_wins");
-      setGameStatus("checkmate");
-      return;
-    }
-    
-    if (isCheckmate(board, "Dark")) {
-      setShowCheckmatePopup(true);
-      setCheckmateWinner("Light");
-      setBackendStatus("white_wins");
-      setGameStatus("checkmate");
-      return;
-    }
-    
-    // Handle check display
-    if (lightInCheck) {
-      setIsCheck(true);
-      setCheckColor("Light");
-      const timer = setTimeout(() => {
-        setIsCheck(false);
-        setCheckColor(null);
-      }, 2000);
-      return () => clearTimeout(timer);
-    } else if (darkInCheck) {
-      setIsCheck(true);
-      setCheckColor("Dark");
-      const timer = setTimeout(() => {
-        setIsCheck(false);
-        setCheckColor(null);
-      }, 2000);
-      return () => clearTimeout(timer);
-    } else {
-      setIsCheck(false);
-      setCheckColor(null);
-    }
-  }, [board]);
 
   useEffect(() => {
     let interval;
-    if (timer.active && gameStatus === "playing" && timerEnabled) {
+    if (timer.active && gameStatus === "playing" && timerEnabled && !isThinking && timer.hasStarted) {
       interval = setInterval(() => {
         setTimer((prev) => {
-          const newTime = {
-            ...prev,
-            Light: Math.max(0, prev.Light - 1),
-          };
-
-          if (newTime.Light === 0) {
+          const newTime = Math.max(0, prev.Light - 1);
+          
+          if (newTime === 0) {
             setGameStatus("timeout");
+            setBackendStatus("black_wins");
             clearInterval(interval);
           }
-
-          return newTime;
+          
+          return {
+            ...prev,
+            Light: newTime,
+          };
         });
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [timer.active, gameStatus, timerEnabled]);
+  }, [timer.active, gameStatus, timerEnabled, isThinking, timer.hasStarted]);
+
+  useEffect(() => {
+    if (gameId && timerEnabled && !timer.hasStarted && gameStatus === "playing") {
+      setTimer(prev => ({
+        ...prev,
+        Light: timerDuration
+      }));
+    }
+  }, [timerDuration, timerEnabled, gameId, gameStatus, timer.hasStarted]);
+
+  useEffect(() => {
+    if (board.length === 0) return;
+    
+    const lightInCheck = isKingInCheck(board, "Light");
+    const darkInCheck = isKingInCheck(board, "Dark");
+    
+    if (isCheckmate(board, "Light")) {
+      setCheckmateWinner("Dark");
+      setBackendStatus("black_wins");
+      setGameStatus("checkmate");
+      setIsCheck(false);
+      setCheckColor(null);
+      setIsStalemate(false);
+      return;
+    }
+    
+    if (isCheckmate(board, "Dark")) {
+      setCheckmateWinner("Light");
+      setBackendStatus("white_wins");
+      setGameStatus("checkmate");
+      setIsCheck(false);
+      setCheckColor(null);
+      setIsStalemate(false);
+      return;
+    }
+    
+    if (isStalematePosition(board, "Light") && gameStatus === "playing" && !lightInCheck) {
+      setIsStalemate(true);
+      setBackendStatus("draw");
+      setGameStatus("stalemate");
+      setIsCheck(false);
+      setCheckColor(null);
+      return;
+    }
+    
+    if (isStalematePosition(board, "Dark") && gameStatus === "playing" && !darkInCheck) {
+      setIsStalemate(true);
+      setBackendStatus("draw");
+      setGameStatus("stalemate");
+      setIsCheck(false);
+      setCheckColor(null);
+      return;
+    }
+    
+    if (lightInCheck) {
+      setIsCheck(true);
+      setCheckColor("Light");
+    } else if (darkInCheck) {
+      setIsCheck(true);
+      setCheckColor("Dark");
+    } else {
+      setIsCheck(false);
+      setCheckColor(null);
+    }
+  }, [board, gameStatus]);
 
   useEffect(() => {
     if (moveHistoryRef.current && historyEnabled) {
@@ -334,53 +438,77 @@ export default function Game() {
     }
   }, [moveHistory, historyEnabled]);
 
-  const undoMove = async () => {
-    if (moveHistory.length === 0 || isThinking) return;
+  const saveToUndoStack = () => {
+    const currentState = {
+      board: board.map(row => [...row]),
+      moveHistory: [...moveHistory],
+      lastMove: lastMove,
+      currentFen: currentFen,
+      backendStatus: backendStatus,
+      gameStatus: gameStatus,
+      timer: { ...timer },
+      castleRights: { ...castleRights },
+    };
+    setUndoStack((prev) => [...prev, currentState]);
+    setRedoStack([]);
+  };
 
-    try {
-       const isMagnus = difficulty === "magnus";
-      const endpoint = isMagnus
-        ? `${API_URL}/game/${gameId}/undo`
-        : `${API_URL}/chess/game/undo?session_id=${gameId}`; 
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: apiHeaders(),
-      });
+  const undoMove = () => {
+    if (undoStack.length === 0 || isThinking) return;
+    if (timerEnabled && timer.Light <= 0) return;
 
-      if (!res.ok) {
-        if (res.status === 401) {
-          navigate("/signup");
-        }
-        return;
-      }
+    const currentState = {
+      board: board.map(row => [...row]),
+      moveHistory: [...moveHistory],
+      lastMove: lastMove,
+      currentFen: currentFen,
+      backendStatus: backendStatus,
+      gameStatus: gameStatus,
+      timer: { ...timer },
+      castleRights: { ...castleRights },
+    };
+    setRedoStack((prev) => [...prev, currentState]);
 
-      const data = await res.json();
-      const fen = isMagnus ? data.fen : data.board?.fen;
+    const previousState = undoStack[undoStack.length - 1];
+    setBoard(previousState.board);
+    setMoveHistory(previousState.moveHistory);
+    setLastMove(previousState.lastMove);
+    setCurrentFen(previousState.currentFen);
+    setBackendStatus(previousState.backendStatus);
+    setGameStatus(previousState.gameStatus);
+    setTimer(previousState.timer);
+    setCastleRights(previousState.castleRights);
+    
+    setUndoStack((prev) => prev.slice(0, -1));
+  };
 
-      setCurrentFen(fen);
-      localStorage.setItem("currentFen", fen);
-      setBoard(fenToBoard(fen));
-       setBackendStatus(isMagnus ? data.status : "active");
-      setGameStatus("playing");
-      setMoveHistory((prev) => {
-      const newHistory = prev.slice(0, -2);
-      if (newHistory.length >= 1) {
-        const lastEntry = newHistory[newHistory.length - 1];
-        const from = typeof lastEntry.from === "string"
-          ? uciSquareToCoords(lastEntry.from)
-          : lastEntry.from;
-        const to = typeof lastEntry.to === "string"
-          ? uciSquareToCoords(lastEntry.to)
-          : lastEntry.to;
-        setLastMove({ from, to });
-      } else {
-        setLastMove(null);
-      }
-      return newHistory;
-    });
-    } catch {
-      // Network error — do nothing
-    }
+  const redoMove = () => {
+    if (redoStack.length === 0 || isThinking) return;
+    if (timerEnabled && timer.Light <= 0) return;
+
+    const currentState = {
+      board: board.map(row => [...row]),
+      moveHistory: [...moveHistory],
+      lastMove: lastMove,
+      currentFen: currentFen,
+      backendStatus: backendStatus,
+      gameStatus: gameStatus,
+      timer: { ...timer },
+      castleRights: { ...castleRights },
+    };
+    setUndoStack((prev) => [...prev, currentState]);
+
+    const nextState = redoStack[redoStack.length - 1];
+    setBoard(nextState.board);
+    setMoveHistory(nextState.moveHistory);
+    setLastMove(nextState.lastMove);
+    setCurrentFen(nextState.currentFen);
+    setBackendStatus(nextState.backendStatus);
+    setGameStatus(nextState.gameStatus);
+    setTimer(nextState.timer);
+    setCastleRights(nextState.castleRights);
+    
+    setRedoStack((prev) => prev.slice(0, -1));
   };
 
   const formatTime = (seconds) => {
@@ -461,7 +589,7 @@ export default function Game() {
         isValidBasicMove = isValidQueenMove(startRow, startCol, endRow, endCol, currentBoard);
         break;
       case "King":
-        isValidBasicMove = isValidKingMove(startRow, startCol, endRow, endCol);
+        isValidBasicMove = isValidKingMove(startRow, startCol, endRow, endCol, pieceColor, currentBoard);
         break;
       default:
         return false;
@@ -712,8 +840,20 @@ export default function Game() {
     );
   };
 
-  const isValidKingMove = (startRow, startCol, endRow, endCol) => {
-    return Math.abs(endRow - startRow) <= 1 && Math.abs(endCol - startCol) <= 1;
+  const isValidKingMove = (startRow, startCol, endRow, endCol, pieceColor = null, currentBoard = board) => {
+    const rowDiff = Math.abs(endRow - startRow);
+    const colDiff = Math.abs(endCol - startCol);
+    
+    if (rowDiff <= 1 && colDiff <= 1) {
+      return true;
+    }
+    
+    if (rowDiff === 0 && colDiff === 2 && pieceColor) {
+      const isKingSide = endCol > startCol;
+      return canCastle(pieceColor, isKingSide, currentBoard, castleRights);
+    }
+    
+    return false;
   };
 
   const getValidMoves = (row, col) => {
@@ -731,8 +871,51 @@ export default function Game() {
     return moves;
   };
 
+  const executeCastle = (color, isKingSide) => {
+    const row = color === "Light" ? 7 : 0;
+    const kingFromCol = 4;
+    const kingToCol = isKingSide ? 6 : 2;
+    const rookFromCol = isKingSide ? 7 : 0;
+    const rookToCol = isKingSide ? 5 : 3;
+    
+    const newBoard = board.map(row => [...row]);
+    const king = newBoard[row][kingFromCol];
+    const rook = newBoard[row][rookFromCol];
+    
+    newBoard[row][kingToCol] = king;
+    newBoard[row][kingFromCol] = "";
+    newBoard[row][rookToCol] = rook;
+    newBoard[row][rookFromCol] = "";
+    
+    setBoard(newBoard);
+    
+    if (color === "Light") {
+      setCastleRights(prev => ({
+        ...prev,
+        whiteKingMoved: true,
+        whiteKingRookMoved: true,
+        whiteQueenRookMoved: true
+      }));
+    } else {
+      setCastleRights(prev => ({
+        ...prev,
+        blackKingMoved: true,
+        blackKingRookMoved: true,
+        blackQueenRookMoved: true
+      }));
+    }
+    
+    setLastMove({ from: [row, kingFromCol], to: [row, kingToCol] });
+    
+    return newBoard;
+  };
+
   const handleSquareClick = (row, col) => {
-    if (isThinking || backendStatus !== "active" || gameStatus === "checkmate") return;
+    if (timerEnabled && timer.hasStarted && timer.Light <= 0) {
+      return;
+    }
+    
+    if (isThinking || backendStatus !== "active" || gameStatus === "checkmate" || gameStatus === "stalemate") return;
 
     const piece = board[row][col];
     const pieceColor = getPieceColor(piece);
@@ -749,7 +932,16 @@ export default function Game() {
       );
 
       if (isValidMoveSelected) {
-        movePiece(selectedPiece.row, selectedPiece.col, row, col);
+        const movingPiece = board[selectedPiece.row][selectedPiece.col];
+        const pieceType = getPieceType(movingPiece);
+        const pieceColor = getPieceColor(movingPiece);
+        
+        if (pieceType === "King" && Math.abs(col - selectedPiece.col) === 2) {
+          const isKingSide = col > selectedPiece.col;
+          movePiece(selectedPiece.row, selectedPiece.col, row, col, true);
+        } else {
+          movePiece(selectedPiece.row, selectedPiece.col, row, col);
+        }
       }
 
       setSelectedPiece(null);
@@ -757,94 +949,63 @@ export default function Game() {
     }
   };
 
-  const movePiece = async (startRow, startCol, endRow, endCol) => {
-      if (!timer.active && timerEnabled) {
-        setTimer((prev) => ({ ...prev, active: true }));
-      }
-      console.log("difficulty:", difficulty);
-      const movingPiece = board[startRow][startCol];
-      const capturedPiece = board[endRow][endCol];
-  
-      let promotionPiece = null;
-      if (getPieceType(movingPiece) === "Pawn" && endRow === 0) {
-        promotionPiece = "q";
-      }
-  
-      const uci = boardPositionToUci(
-        startRow,
-        startCol,
-        endRow,
-        endCol,
-        promotionPiece,
-      );
-  
-      if (historyEnabled) {
-        const notation = getChessNotation(
-          null,
-          startRow,
-          startCol,
-          endRow,
-          endCol,
-          null,
-        );
-        setMoveHistory((prev) => [
-          ...prev,
-          {
-            player: "Light",
-            notation,
-            piece: movingPiece,
-            from: [startRow, startCol],
-            to: [endRow, endCol],
-            captured: capturedPiece,
-          },
-        ]);
-      }
-  
-      setLastMove({ from: [startRow, startCol], to: [endRow, endCol] });
-  
-      const newBoard = board.map((row) => [...row]);
-      newBoard[endRow][endCol] = promotionPiece ? "LightQueen" : movingPiece;
-      newBoard[startRow][startCol] = "";
-      setBoard(newBoard);
+  const movePiece = async (startRow, startCol, endRow, endCol, isCastle = false) => {
+    if (timerEnabled && timer.hasStarted && timer.Light <= 0) {
+      return;
+    }
+    
+    saveToUndoStack();
+    
+    if (timerEnabled && !timer.hasStarted) {
+      setTimer(prev => ({ 
+        ...prev, 
+        active: true, 
+        hasStarted: true 
+      }));
+    }
+    
+    const movingPiece = board[startRow][startCol];
+    const capturedPiece = board[endRow][endCol];
+    
+    if (isCastle) {
+      const color = getPieceColor(movingPiece);
+      const isKingSide = endCol > startCol;
+      executeCastle(color, isKingSide);
       
       setIsThinking(true);
       try {
         const isMagnus = difficulty.toLowerCase().includes("magnus");
-
         const endpoint = isMagnus 
           ? `${API_URL}/game/${gameId}/move` 
           : `${API_URL}/chess/game/move`;
-
+        
+        const uci = boardPositionToUci(startRow, startCol, endRow, endCol);
+        
         const payload = isMagnus 
           ? { uci, current_fen: currentFen } 
           : { session_id: gameId, uci };
+        
         const res = await fetch(endpoint, {
           method: "POST",
           headers: apiHeaders(),
           body: JSON.stringify(payload),
         });
-  
+        
         if (!res.ok) {
           if (res.status === 401) {
             navigate("/signup");
             return;
           }
-          const errData = await res.json().catch(() => null);
-          if (res.status === 409 && errData?.detail?.server_fen) {
-            const serverFen = errData.detail.server_fen;
-            setCurrentFen(serverFen);
-            setBoard(fenToBoard(serverFen));
-          }
           setIsThinking(false);
           return;
         }
-  
+        
         const data = await res.json();
         const backendFen = isMagnus ? data.fen : data.board?.fen;
         const botMoveUci = isMagnus ? data.ai_uci : data.bot_move?.move;
         const isGameOver = isMagnus 
-        ? !!data.game_over 
-        : !!data.board?.is_game_over;
+          ? !!data.game_over 
+          : !!data.board?.is_game_over;
         
         if (historyEnabled && botMoveUci) {
           const aiFrom = botMoveUci.slice(0, 2);
@@ -864,32 +1025,178 @@ export default function Game() {
             },
           ]);
         }
-  
+        
         setCurrentFen(backendFen);
         localStorage.setItem("currentFen", backendFen);
         setBoard(fenToBoard(backendFen));
         const newStatus = isMagnus 
-        ? data.status 
-        : (isGameOver ? "game_over" : "active"); 
-
+          ? data.status 
+          : (isGameOver ? "game_over" : "active");
+        
         setBackendStatus(newStatus);
-  
+        
         if (isGameOver) {
           setGameStatus(isMagnus ? data.status : "game_over");
         } else {
           setGameStatus("playing");
         }
       } catch {
-        setBoard(board);
       } finally {
         setIsThinking(false);
       }
-    };
-  
+      return;
+    }
+
+    let promotionPiece = null;
+    if (getPieceType(movingPiece) === "Pawn" && endRow === 0) {
+      promotionPiece = "q";
+    }
+
+    const uci = boardPositionToUci(
+      startRow,
+      startCol,
+      endRow,
+      endCol,
+      promotionPiece,
+    );
+
+    if (historyEnabled) {
+      const notation = getChessNotation(
+        null,
+        startRow,
+        startCol,
+        endRow,
+        endCol,
+        null,
+      );
+      setMoveHistory((prev) => [
+        ...prev,
+        {
+          player: "Light",
+          notation,
+          piece: movingPiece,
+          from: [startRow, startCol],
+          to: [endRow, endCol],
+          captured: capturedPiece,
+        },
+      ]);
+    }
+
+    setLastMove({ from: [startRow, startCol], to: [endRow, endCol] });
+
+    const newBoard = board.map((row) => [...row]);
+    newBoard[endRow][endCol] = promotionPiece ? "LightQueen" : movingPiece;
+    newBoard[startRow][startCol] = "";
+    setBoard(newBoard);
+    
+    if (getPieceType(movingPiece) === "King") {
+      if (getPieceColor(movingPiece) === "Light") {
+        setCastleRights(prev => ({ ...prev, whiteKingMoved: true }));
+      } else {
+        setCastleRights(prev => ({ ...prev, blackKingMoved: true }));
+      }
+    }
+    
+    if (getPieceType(movingPiece) === "Rook") {
+      if (startCol === 0) {
+        if (getPieceColor(movingPiece) === "Light") {
+          setCastleRights(prev => ({ ...prev, whiteQueenRookMoved: true }));
+        } else {
+          setCastleRights(prev => ({ ...prev, blackQueenRookMoved: true }));
+        }
+      } else if (startCol === 7) {
+        if (getPieceColor(movingPiece) === "Light") {
+          setCastleRights(prev => ({ ...prev, whiteKingRookMoved: true }));
+        } else {
+          setCastleRights(prev => ({ ...prev, blackKingRookMoved: true }));
+        }
+      }
+    }
+    
+    setIsThinking(true);
+    try {
+      const isMagnus = difficulty.toLowerCase().includes("magnus");
+
+      const endpoint = isMagnus 
+        ? `${API_URL}/game/${gameId}/move` 
+        : `${API_URL}/chess/game/move`;
+
+      const payload = isMagnus 
+        ? { uci, current_fen: currentFen } 
+        : { session_id: gameId, uci };
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: apiHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          navigate("/signup");
+          return;
+        }
+        const errData = await res.json().catch(() => null);
+        if (res.status === 409 && errData?.detail?.server_fen) {
+          const serverFen = errData.detail.server_fen;
+          setCurrentFen(serverFen);
+          setBoard(fenToBoard(serverFen));
+        }
+        setIsThinking(false);
+        return;
+      }
+
+      const data = await res.json();
+      const backendFen = isMagnus ? data.fen : data.board?.fen;
+      const botMoveUci = isMagnus ? data.ai_uci : data.bot_move?.move;
+      const isGameOver = isMagnus 
+      ? !!data.game_over 
+      : !!data.board?.is_game_over;
+      
+      if (historyEnabled && botMoveUci) {
+        const aiFrom = botMoveUci.slice(0, 2);
+        const aiTo = botMoveUci.slice(2, 4);
+        const [afr, afc] = uciSquareToCoords(aiFrom);
+        const [atr, atc] = uciSquareToCoords(aiTo);
+        setLastMove({ from: [afr, afc], to: [atr, atc] });
+        setMoveHistory((prev) => [
+          ...prev,
+          {
+            player: "Dark",
+            notation: `${aiFrom}-${aiTo}`,
+            piece: "AI",
+            from: aiFrom,
+            to: aiTo,
+            captured: null,
+          },
+        ]);
+      }
+
+      setCurrentFen(backendFen);
+      localStorage.setItem("currentFen", backendFen);
+      setBoard(fenToBoard(backendFen));
+      const newStatus = isMagnus 
+      ? data.status 
+      : (isGameOver ? "game_over" : "active"); 
+
+      setBackendStatus(newStatus);
+
+      if (isGameOver) {
+        setGameStatus(isMagnus ? data.status : "game_over");
+      } else {
+        setGameStatus("playing");
+      }
+    } catch {
+      setBoard(board);
+    } finally {
+      setIsThinking(false);
+    }
+  };
 
   const handleNewGame = async () => {
-    setShowCheckmatePopup(false);
     setCheckmateWinner(null);
+    setIsStalemate(false);
+    setUndoStack([]);
+    setRedoStack([]);
     await createNewGame();
   };
 
@@ -906,7 +1213,7 @@ export default function Game() {
       case "draw":
         return "Draw!";
       default:
-        if (gameStatus === "timeout") return "Time's Up!";
+        if (gameStatus === "timeout") return "Time's Up! You Lose!";
         if (isThinking) return "AI is thinking...";
         return "Your Turn";
     }
@@ -965,40 +1272,112 @@ export default function Game() {
     candy: "hover:bg-purple-500",
   }[theme];
 
+  const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  const ranks = ["8", "7", "6", "5", "4", "3", "2", "1"];
+
+  const getLabelStyle = () => {
+    switch (theme) {
+      case "light":
+        return "text-gray-700 font-semibold";
+      case "dark":
+        return "text-gray-300 font-semibold";
+      case "game":
+        return "text-green-400 font-semibold";
+      case "sky":
+        return "text-blue-100 font-semibold";
+      case "candy":
+        return "text-pink-100 font-semibold";
+      default:
+        return "text-white font-semibold";
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center">
       <div className="mb-4 flex items-center justify-center space-x-4">
         {timerEnabled && (
-          <div className={`px-4 py-2 ${buttonBgClass} rounded`}>
-            {"User"}: {formatTime(timer.Light)}
+          <div className={`px-4 py-2 ${buttonBgClass} rounded flex items-center justify-center`}>
+            <span>Time: {formatTime(timer.Light)}</span>
           </div>
         )}
-        <div
-          className={`px-4 py-2 rounded text-white ${
-            backendStatus === "white_wins"
-              ? "bg-green-600"
-              : backendStatus === "black_wins"
-                ? "bg-red-600"
-                : backendStatus === "draw"
-                  ? "bg-yellow-600"
-                  : isThinking
-                    ? "bg-orange-500"
-                    : "bg-blue-500"
-          }`}
-        >
-          {getStatusMessage()}
-        </div>
-        <button
-          onClick={() => setShowOpponentProfile(true)}
-          className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
-        >
-          Opponent
-        </button>
+        
+        {/* Check Message - Yellow */}
+        {isCheck && checkColor && gameStatus !== "checkmate" && gameStatus !== "stalemate" && (
+          <div className="px-4 py-2 rounded bg-yellow-500 text-white font-bold animate-pulse">
+            ⚠️ CHECK! {checkColor === "Light" ? "Your king" : "Opponent's king"} is in check! ⚠️
+          </div>
+        )}
+        
+        {/* Checkmate Message - Green/Red with action buttons */}
+        {checkmateWinner && gameStatus === "checkmate" && (
+          <div className="flex items-center space-x-3">
+            <div className={`px-4 py-2 rounded font-bold ${
+              checkmateWinner === "Light" 
+                ? "bg-green-600 text-white" 
+                : "bg-red-600 text-white"
+            }`}>
+              {checkmateWinner === "Light" ? "🏆 CHECKMATE! You Win! 🏆" : "💀 CHECKMATE! You Lose! 💀"}
+            </div>
+            <button
+              onClick={handleNewGame}
+              className={`px-3 py-2 ${buttonBgClass} rounded ${buttonHoverClass} text-sm`}
+            >
+              New Game
+            </button>
+            <button
+              onClick={handleReturnHome}
+              className={`px-3 py-2 ${buttonBgClass} rounded ${buttonHoverClass} text-sm`}
+            >
+              Home
+            </button>
+          </div>
+        )}
+        
+        {/* Stalemate Message - Orange with action buttons */}
+        {isStalemate && gameStatus === "stalemate" && (
+          <div className="flex items-center space-x-3">
+            <div className="px-4 py-2 rounded font-bold bg-orange-600 text-white">
+              ♟️ STALEMATE! Game is a Draw! ♟️
+            </div>
+            <button
+              onClick={handleNewGame}
+              className={`px-3 py-2 ${buttonBgClass} rounded ${buttonHoverClass} text-sm`}
+            >
+              New Game
+            </button>
+            <button
+              onClick={handleReturnHome}
+              className={`px-3 py-2 ${buttonBgClass} rounded ${buttonHoverClass} text-sm`}
+            >
+              Home
+            </button>
+          </div>
+        )}
+        
+        {/* Status Message - Only show if not checkmate or stalemate */}
+        {!checkmateWinner && !isStalemate && (
+          <div
+            className={`px-4 py-2 rounded text-white ${
+              backendStatus === "white_wins"
+                ? "bg-green-600"
+                : backendStatus === "black_wins"
+                  ? "bg-red-600"
+                  : backendStatus === "draw"
+                    ? "bg-yellow-600"
+                    : isThinking
+                      ? "bg-orange-500"
+                      : "bg-blue-500"
+            }`}
+          >
+            {getStatusMessage()}
+          </div>
+        )}
+        
         <button
           onClick={undoMove}
-          disabled={moveHistory.length === 0 || isThinking || backendStatus !== "active"}
+          disabled={undoStack.length === 0 || isThinking || backendStatus !== "active" || checkmateWinner || isStalemate || (timerEnabled && timer.hasStarted && timer.Light <= 0)}
           className={`px-4 py-2 rounded ${
-            moveHistory.length === 0 || isThinking || backendStatus !== "active"
+            undoStack.length === 0 || isThinking || backendStatus !== "active" || checkmateWinner || isStalemate || (timerEnabled && timer.hasStarted && timer.Light <= 0)
               ? "bg-gray-400 cursor-not-allowed"
               : `${buttonBgClass} ${buttonHoverClass}`
           }`}
@@ -1006,92 +1385,105 @@ export default function Game() {
           Undo
         </button>
         <button
+          onClick={redoMove}
+          disabled={redoStack.length === 0 || isThinking || backendStatus !== "active" || checkmateWinner || isStalemate || (timerEnabled && timer.hasStarted && timer.Light <= 0)}
+          className={`px-4 py-2 rounded ${
+            redoStack.length === 0 || isThinking || backendStatus !== "active" || checkmateWinner || isStalemate || (timerEnabled && timer.hasStarted && timer.Light <= 0)
+              ? "bg-gray-400 cursor-not-allowed"
+              : `${buttonBgClass} ${buttonHoverClass}`
+          }`}
+        >
+          Redo
+        </button>
+        <button
           onClick={handleSettingsClick}
           className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
         >
           Settings
         </button>
-        <button
-          onClick={handleReturnHome}
-          className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
-        >
-          Return to Home
-        </button>
-        <button
-          onClick={handleNewGame}
-          className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
-        >
-          New Game
-        </button>
       </div>
 
-      {/* Check Message Display */}
-      {isCheck && (
-        <div className={`fixed top-24 left-1/2 transform -translate-x-1/2 z-50 animate-pulse
-          ${checkColor === "Light" ? "bg-yellow-500" : "bg-red-500"} 
-          text-white px-6 py-3 rounded-lg shadow-lg text-xl font-bold`}
-        >
-          ⚠️ CHECK! {checkColor === "Light" ? "Your king" : "Opponent's king"} is in check! ⚠️
-        </div>
-      )}
+      <div className="flex">
+        <div className="relative">
+          <div className="absolute -left-8 top-0 h-full flex flex-col justify-between">
+            {ranks.map((rank, index) => (
+              <div 
+                key={`rank-${rank}`} 
+                className={`${getLabelStyle()} text-sm font-bold flex items-center justify-center h-16`}
+              >
+                {rank}
+              </div>
+            ))}
+          </div>
 
-      <div className="flex justify-center items-center w-full">
-        <div
-          className={`grid grid-cols-8 grid-rows-8 border-2 border-gray-800 w-[min(73vw,73vh)] h-[min(73vw,73vh)] ${isThinking ? "opacity-75 pointer-events-none" : ""}`}
-        >
-          {board.map((row, rowIndex) =>
-            row.map((piece, colIndex) => {
-              const isDarkSquare = (rowIndex + colIndex) % 2 === 1;
-              const isValidMoveSquare = validMoves.some(
-                ([r, c]) => r === rowIndex && c === colIndex,
-              );
-              const isLastMoveFrom =
-                lastMove &&
-                lastMove.from[0] === rowIndex &&
-                lastMove.from[1] === colIndex;
-              const isLastMoveTo =
-                lastMove &&
-                lastMove.to[0] === rowIndex &&
-                lastMove.to[1] === colIndex;
-              const isSelected = selectedPiece?.row===rowIndex && selectedPiece?.col===colIndex;
-              const isKingInCheckNow = isCheck && 
-                ((piece === "LightKing" && checkColor === "Light") || 
-                 (piece === "DarkKing" && checkColor === "Dark"));
-              const imagePath = getPieceImage(piece);
+          <div
+            className={`grid grid-cols-8 gap-0 border-2 border-gray-800 ${isThinking ? "opacity-75 pointer-events-none" : ""}`}
+          >
+            {board.map((row, rowIndex) =>
+              row.map((piece, colIndex) => {
+                const isDarkSquare = (rowIndex + colIndex) % 2 === 1;
+                const isValidMoveSquare = validMoves.some(
+                  ([r, c]) => r === rowIndex && c === colIndex,
+                );
+                const isLastMoveFrom =
+                  lastMove &&
+                  lastMove.from[0] === rowIndex &&
+                  lastMove.from[1] === colIndex;
+                const isLastMoveTo =
+                  lastMove &&
+                  lastMove.to[0] === rowIndex &&
+                  lastMove.to[1] === colIndex;
+                const isSelected = selectedPiece?.row===rowIndex && selectedPiece?.col===colIndex;
+                const isKingInCheckNow = isCheck && 
+                  ((piece === "LightKing" && checkColor === "Light") || 
+                   (piece === "DarkKing" && checkColor === "Dark"));
+                const imagePath = getPieceImage(piece);
 
-              return (
-                <div
-                  key={`${rowIndex}-${colIndex}`}
-                  onClick={() => handleSquareClick(rowIndex, colIndex)}
-                  className={`
-                    flex items-center justify-center cursor-pointer relative
-                    ${isLastMoveFrom ? "bg-yellow-400 bg-opacity-20" :
-                      isLastMoveTo ? "bg-green-400 bg-opacity-20" :
-                      isDarkSquare ? "bg-gray-600" : "bg-gray-300"}
-                    ${isSelected ? "ring-2 ring-yellow-400 ring-inset" : ""}
-                    ${isKingInCheckNow ? "ring-4 ring-red-500 ring-inset animate-pulse" : ""}
-                    hover:opacity-75 transition-opacity
-                  `}
-                >
-                  {isValidMoveSquare && piece && (
-                    <div className="absolute inset-0 border-4 border-red-500 pointer-events-none"></div>
-                  )}
-                  {isValidMoveSquare && !piece && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-4 h-4 bg-green-500 bg-opacity-50 rounded-full"></div>
-                    </div>
-                  )}
-                  {imagePath ? (
-                    <img
-                      src={imagePath}
-                      alt={piece}
-                      className="w-3/4 h-3/4 object-contain z-10"
-                    />
-                  ) : null}
-                </div>
-              );
-            }),
-          )}
+                return (
+                  <div
+                    key={`${rowIndex}-${colIndex}`}
+                    onClick={() => handleSquareClick(rowIndex, colIndex)}
+                    className={`
+                      w-16 h-16 flex items-center justify-center cursor-pointer relative
+                      ${isLastMoveFrom ? "bg-yellow-400 bg-opacity-20" :
+                        isLastMoveTo ? "bg-green-400 bg-opacity-20" :
+                        isDarkSquare ? "bg-gray-600" : "bg-gray-300"}
+                      ${isSelected ? "ring-2 ring-yellow-400 ring-inset" : ""}
+                      ${isKingInCheckNow ? "ring-4 ring-red-500 ring-inset animate-pulse" : ""}
+                      hover:opacity-75 transition-opacity
+                    `}
+                  >
+                    {isValidMoveSquare && piece && (
+                      <div className="absolute inset-0 border-4 border-red-500 pointer-events-none"></div>
+                    )}
+                    {isValidMoveSquare && !piece && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-4 h-4 bg-green-500 bg-opacity-50 rounded-full"></div>
+                      </div>
+                    )}
+                    {imagePath ? (
+                      <img
+                        src={imagePath}
+                        alt={piece}
+                        className="w-12 h-12 object-contain z-10"
+                      />
+                    ) : null}
+                  </div>
+                );
+              }),
+            )}
+          </div>
+
+          <div className="absolute -bottom-6 left-0 w-full flex justify-between">
+            {files.map((file, index) => (
+              <div 
+                key={`file-${file}`} 
+                className={`${getLabelStyle()} text-sm font-bold flex items-center justify-center w-16`}
+              >
+                {file}
+              </div>
+            ))}
+          </div>
         </div>
 
         {historyEnabled && (
@@ -1143,43 +1535,6 @@ export default function Game() {
         )}
       </div>
 
-      {/* Checkmate Popup */}
-      {showCheckmatePopup && checkmateWinner && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 animate-fade-in">
-          <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-8 text-center shadow-2xl max-w-md w-full mx-4 transform animate-bounce-in">
-            <div className="mb-6">
-              <div className="text-6xl mb-4">
-                {checkmateWinner === "Light" ? "🏆" : "💀"}
-              </div>
-              <h2 className="text-4xl font-bold mb-2 text-white">
-                Checkmate!
-              </h2>
-              <p className="text-xl text-gray-300">
-                {checkmateWinner === "Light" 
-                  ? "Congratulations! You won!" 
-                  : "Game Over! The AI wins!"}
-              </p>
-            </div>
-            
-            <div className="space-y-3">
-              <button
-                onClick={handleNewGame}
-                className="w-full px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all transform hover:scale-105 text-lg font-semibold"
-              >
-                Play New Game
-              </button>
-              <button
-                onClick={handleReturnHome}
-                className="w-full px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all transform hover:scale-105 text-lg font-semibold"
-              >
-                Return to Home
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div
@@ -1238,6 +1593,16 @@ export default function Game() {
                   }`}
                 >
                   Game Display
+                </button>
+                <button
+                  onClick={() => setSettingsTab("game actions")}
+                  className={`p-4 text-left ${
+                    settingsTab === "game actions"
+                      ? `${modalSidebarActiveClass} font-semibold`
+                      : `${modalSidebarHoverClass}`
+                  }`}
+                >
+                  Game Actions
                 </button>
                 {isLoggedIn && (
                   <button
@@ -1522,6 +1887,63 @@ export default function Game() {
                   </div>
                 )}
 
+                {settingsTab === "game actions" && (
+                  <div className="space-y-6">
+                    <h2 className="text-2xl font-semibold mb-8">
+                      Game Actions
+                    </h2>
+                    <div className="flex flex-col gap-6">
+                      <div className="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                          <h3 className="text-lg font-semibold mb-1">Opponent Profile</h3>
+                          <p className="text-sm opacity-75">View opponent information and stats</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setShowOpponentProfile(true);
+                            setShowSettings(false);
+                          }}
+                          className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
+                        >
+                          View Profile
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                          <h3 className="text-lg font-semibold mb-1">New Game</h3>
+                          <p className="text-sm opacity-75">Start a fresh game with current settings</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            handleNewGame();
+                            setShowSettings(false);
+                          }}
+                          className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
+                        >
+                          New Game
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                          <h3 className="text-lg font-semibold mb-1">Return to Home</h3>
+                          <p className="text-sm opacity-75">Exit to main menu</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            handleReturnHome();
+                            setShowSettings(false);
+                          }}
+                          className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
+                        >
+                          Return Home
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {settingsTab === "account" && isLoggedIn && (
                   <div className="space-y-4">
                     <h2 className="text-2xl font-semibold mb-8">Account</h2>
@@ -1553,7 +1975,6 @@ export default function Game() {
         </div>
       )}
 
-      {/* Opponent Profile Modal */}
       {showOpponentProfile && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-gray-800 rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
