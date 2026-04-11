@@ -19,6 +19,13 @@ function uciSquareToCoords(square) {
   return [row, col];
 }
 
+// Helper function to convert coordinates to algebraic notation
+function coordsToAlgebraic(row, col) {
+  const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  const ranks = ["8", "7", "6", "5", "4", "3", "2", "1"];
+  return files[col] + ranks[row];
+}
+
 export default function Game() {
   const [playerName, setPlayerName] = useState("");
   const [board, setBoard] = useState([]);
@@ -532,6 +539,7 @@ export default function Game() {
     return piece.replace("Light", "").replace("Dark", "");
   };
 
+  // Improved chess notation function that returns proper algebraic notation
   const getChessNotation = (
     piece,
     startRow,
@@ -539,14 +547,47 @@ export default function Game() {
     endRow,
     endCol,
     capturedPiece,
+    isPromotion = false,
+    promotionPiece = null
   ) => {
+    const pieceType = getPieceType(piece);
     const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
     const ranks = ["8", "7", "6", "5", "4", "3", "2", "1"];
     
     const startSquare = files[startCol] + ranks[startRow];
     const endSquare = files[endCol] + ranks[endRow];
     
-    return `${startSquare}-${endSquare}`;
+    // For pawn moves
+    if (pieceType === "Pawn") {
+      if (capturedPiece) {
+        // Pawn capture: like "exd5"
+        const captureNotation = files[startCol] + "x" + endSquare;
+        if (isPromotion && promotionPiece) {
+          return captureNotation + "=" + promotionPiece.toUpperCase();
+        }
+        return captureNotation;
+      } else {
+        // Pawn move: like "e4"
+        if (isPromotion && promotionPiece) {
+          return endSquare + "=" + promotionPiece.toUpperCase();
+        }
+        return endSquare;
+      }
+    }
+    
+    // For piece moves
+    let pieceLetter = "";
+    switch (pieceType) {
+      case "Knight": pieceLetter = "N"; break;
+      case "Bishop": pieceLetter = "B"; break;
+      case "Rook": pieceLetter = "R"; break;
+      case "Queen": pieceLetter = "Q"; break;
+      case "King": pieceLetter = "K"; break;
+      default: pieceLetter = "";
+    }
+    
+    const captureSymbol = capturedPiece ? "x" : "";
+    return pieceLetter + captureSymbol + endSquare;
   };
 
   const isValidMove = (startRow, startCol, endRow, endCol, piece, currentBoard = board) => {
@@ -972,6 +1013,22 @@ export default function Game() {
       const isKingSide = endCol > startCol;
       executeCastle(color, isKingSide);
       
+      // Add castle notation to history
+      if (historyEnabled) {
+        const castleNotation = isKingSide ? "O-O" : "O-O-O";
+        setMoveHistory((prev) => [
+          ...prev,
+          {
+            player: "Light",
+            notation: castleNotation,
+            piece: "King",
+            from: [startRow, startCol],
+            to: [endRow, endCol],
+            captured: null,
+          },
+        ]);
+      }
+      
       setIsThinking(true);
       try {
         const isMagnus = difficulty.toLowerCase().includes("magnus");
@@ -1013,11 +1070,15 @@ export default function Game() {
           const [afr, afc] = uciSquareToCoords(aiFrom);
           const [atr, atc] = uciSquareToCoords(aiTo);
           setLastMove({ from: [afr, afc], to: [atr, atc] });
+          
+          // Convert UCI to algebraic notation for bot moves
+          const fromAlgebraic = aiFrom;
+          const toAlgebraic = aiTo;
           setMoveHistory((prev) => [
             ...prev,
             {
               player: "Dark",
-              notation: `${aiFrom}-${aiTo}`,
+              notation: `${toAlgebraic}`,
               piece: "AI",
               from: aiFrom,
               to: aiTo,
@@ -1048,8 +1109,10 @@ export default function Game() {
     }
 
     let promotionPiece = null;
+    let isPromotion = false;
     if (getPieceType(movingPiece) === "Pawn" && endRow === 0) {
       promotionPiece = "q";
+      isPromotion = true;
     }
 
     const uci = boardPositionToUci(
@@ -1062,12 +1125,14 @@ export default function Game() {
 
     if (historyEnabled) {
       const notation = getChessNotation(
-        null,
+        movingPiece,
         startRow,
         startCol,
         endRow,
         endCol,
-        null,
+        capturedPiece,
+        isPromotion,
+        promotionPiece
       );
       setMoveHistory((prev) => [
         ...prev,
@@ -1162,7 +1227,7 @@ export default function Game() {
           ...prev,
           {
             player: "Dark",
-            notation: `${aiFrom}-${aiTo}`,
+            notation: aiTo,
             piece: "AI",
             from: aiFrom,
             to: aiTo,
@@ -1405,84 +1470,91 @@ export default function Game() {
 
       <div className="flex">
         <div className="relative">
-          <div className="absolute -left-8 top-0 h-full flex flex-col justify-between">
-            {ranks.map((rank, index) => (
-              <div 
-                key={`rank-${rank}`} 
-                className={`${getLabelStyle()} text-sm font-bold flex items-center justify-center h-16`}
+          <div className="flex">
+            <div className="flex flex-col justify-between mr-2" style={{ height: '512px' }}>
+              {ranks.map((rank, index) => (
+                <div 
+                  key={`rank-${rank}`} 
+                  className={`${getLabelStyle()} text-sm font-bold flex items-center justify-center`}
+                  style={{ width: '24px', height: '64px' }}
+                >
+                  {rank}
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <div
+                className={`grid grid-cols-8 gap-0 border-2 border-gray-800 ${isThinking ? "opacity-75 pointer-events-none" : ""}`}
+                style={{ width: '512px', height: '512px' }}
               >
-                {rank}
-              </div>
-            ))}
-          </div>
+                {board.map((row, rowIndex) =>
+                  row.map((piece, colIndex) => {
+                    const isDarkSquare = (rowIndex + colIndex) % 2 === 1;
+                    const isValidMoveSquare = validMoves.some(
+                      ([r, c]) => r === rowIndex && c === colIndex,
+                    );
+                    const isLastMoveFrom =
+                      lastMove &&
+                      lastMove.from[0] === rowIndex &&
+                      lastMove.from[1] === colIndex;
+                    const isLastMoveTo =
+                      lastMove &&
+                      lastMove.to[0] === rowIndex &&
+                      lastMove.to[1] === colIndex;
+                    const isSelected = selectedPiece?.row===rowIndex && selectedPiece?.col===colIndex;
+                    const isKingInCheckNow = isCheck && 
+                      ((piece === "LightKing" && checkColor === "Light") || 
+                      (piece === "DarkKing" && checkColor === "Dark"));
+                    const imagePath = getPieceImage(piece);
 
-          <div
-            className={`grid grid-cols-8 gap-0 border-2 border-gray-800 ${isThinking ? "opacity-75 pointer-events-none" : ""}`}
-          >
-            {board.map((row, rowIndex) =>
-              row.map((piece, colIndex) => {
-                const isDarkSquare = (rowIndex + colIndex) % 2 === 1;
-                const isValidMoveSquare = validMoves.some(
-                  ([r, c]) => r === rowIndex && c === colIndex,
-                );
-                const isLastMoveFrom =
-                  lastMove &&
-                  lastMove.from[0] === rowIndex &&
-                  lastMove.from[1] === colIndex;
-                const isLastMoveTo =
-                  lastMove &&
-                  lastMove.to[0] === rowIndex &&
-                  lastMove.to[1] === colIndex;
-                const isSelected = selectedPiece?.row===rowIndex && selectedPiece?.col===colIndex;
-                const isKingInCheckNow = isCheck && 
-                  ((piece === "LightKing" && checkColor === "Light") || 
-                   (piece === "DarkKing" && checkColor === "Dark"));
-                const imagePath = getPieceImage(piece);
-
-                return (
-                  <div
-                    key={`${rowIndex}-${colIndex}`}
-                    onClick={() => handleSquareClick(rowIndex, colIndex)}
-                    className={`
-                      w-16 h-16 flex items-center justify-center cursor-pointer relative
-                      ${isLastMoveFrom ? "bg-yellow-400 bg-opacity-20" :
-                        isLastMoveTo ? "bg-green-400 bg-opacity-20" :
-                        isDarkSquare ? "bg-gray-600" : "bg-gray-300"}
-                      ${isSelected ? "ring-2 ring-yellow-400 ring-inset" : ""}
-                      ${isKingInCheckNow ? "ring-4 ring-red-500 ring-inset animate-pulse" : ""}
-                      hover:opacity-75 transition-opacity
-                    `}
-                  >
-                    {isValidMoveSquare && piece && (
-                      <div className="absolute inset-0 border-4 border-red-500 pointer-events-none"></div>
-                    )}
-                    {isValidMoveSquare && !piece && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-4 h-4 bg-green-500 bg-opacity-50 rounded-full"></div>
+                    return (
+                      <div
+                        key={`${rowIndex}-${colIndex}`}
+                        onClick={() => handleSquareClick(rowIndex, colIndex)}
+                        className={`
+                          w-16 h-16 flex items-center justify-center cursor-pointer relative
+                          ${isLastMoveFrom ? "bg-yellow-400 bg-opacity-20" :
+                            isLastMoveTo ? "bg-green-400 bg-opacity-20" :
+                            isDarkSquare ? "bg-gray-600" : "bg-gray-300"}
+                          ${isSelected ? "ring-2 ring-yellow-400 ring-inset" : ""}
+                          ${isKingInCheckNow ? "ring-4 ring-red-500 ring-inset animate-pulse" : ""}
+                          hover:opacity-75 transition-opacity
+                        `}
+                      >
+                        {isValidMoveSquare && piece && (
+                          <div className="absolute inset-0 border-4 border-red-500 pointer-events-none"></div>
+                        )}
+                        {isValidMoveSquare && !piece && (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="w-4 h-4 bg-green-500 bg-opacity-50 rounded-full"></div>
+                          </div>
+                        )}
+                        {imagePath ? (
+                          <img
+                            src={imagePath}
+                            alt={piece}
+                            className="w-12 h-12 object-contain z-10"
+                          />
+                        ) : null}
                       </div>
-                    )}
-                    {imagePath ? (
-                      <img
-                        src={imagePath}
-                        alt={piece}
-                        className="w-12 h-12 object-contain z-10"
-                      />
-                    ) : null}
-                  </div>
-                );
-              }),
-            )}
-          </div>
-
-          <div className="absolute -bottom-6 left-0 w-full flex justify-between">
-            {files.map((file, index) => (
-              <div 
-                key={`file-${file}`} 
-                className={`${getLabelStyle()} text-sm font-bold flex items-center justify-center w-16`}
-              >
-                {file}
+                    );
+                  }),
+                )}
               </div>
-            ))}
+
+              <div className="mt-1 w-full flex justify-between px-0" style={{ width: '512px' }}>
+                {files.map((file, index) => (
+                  <div 
+                    key={`file-${file}`} 
+                    className={`${getLabelStyle()} text-sm font-bold flex items-center justify-center`}
+                    style={{ width: '64px' }}
+                  >
+                    {file}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
