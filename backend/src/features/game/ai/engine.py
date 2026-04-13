@@ -2,37 +2,24 @@ import logging
 import random
 from pathlib import Path
 from typing import Any
-
+from src.magnusChessGPT.model_wrapper import ChessModel
 import chess
-
 from src.data.env import server_env
 
 logger = logging.getLogger(__name__)
-
-
-_MODEL: Any = None
-_MODEL_LOAD_ERROR: Exception | None = None
-
-
-def _default_model_path() -> str:
-    return str(Path(__file__).resolve().parents[3] / "magnusChessGPT" / "modelConfig")
-
-
-def _load_model() -> Any | None:
-    global _MODEL
-    global _MODEL_LOAD_ERROR
-    if _MODEL is not None or _MODEL_LOAD_ERROR is not None:
-        return _MODEL
-
-    model_path = server_env.CHESS_MODEL_PATH or _default_model_path()
-    try:
-        from src.magnusChessGPT.model_wrapper import ChessModel
-
-        _MODEL = ChessModel(model_path)
-    except Exception as exc:  # Keep gameplay available if model can't initialize.
-        _MODEL_LOAD_ERROR = exc
-        _MODEL = None
-    return _MODEL
+model: ChessModel | None = None
+model_load_error: Exception | None = None
+try:
+    model = ChessModel(
+        str(Path(__file__).resolve().parents[3] / "magnusChessGPT" / "modelConfig")
+    )
+except Exception as exc:
+    model_load_error = exc
+    model = None
+logger.warning(
+    "Magnus AI model unavailable (load error: %s) — using random legal move",
+    model_load_error,
+)
 
 
 def _random_legal_move(board: chess.Board) -> str | None:
@@ -53,11 +40,10 @@ def get_ai_move(fen: str, move_history: list[str] | None = None) -> str | None:
     if not list(board.legal_moves):
         return None
 
-    model = _load_model()
     if model is None:
         logger.warning(
-            "AI model unavailable (load error: %s) — using random legal move",
-            _MODEL_LOAD_ERROR,
+            "Magnus AI model unavailable (load error: %s) — using random legal move",
+            model_load_error,
         )
         return _random_legal_move(board)
 
@@ -67,7 +53,7 @@ def get_ai_move(fen: str, move_history: list[str] | None = None) -> str | None:
         prediction = model.predict(history)
     except Exception as exc:
         logger.warning(
-            "AI model prediction raised an exception (%s) — using random legal move",
+            "Magnus AI model prediction raised an exception (%s) — using random legal move",
             exc,
         )
         return _random_legal_move(board)
@@ -75,7 +61,7 @@ def get_ai_move(fen: str, move_history: list[str] | None = None) -> str | None:
     san_move = prediction.get("move") if isinstance(prediction, dict) else None
     if not san_move:
         logger.warning(
-            "AI model returned no move (prediction: %r) — using random legal move",
+            "Magnus AI model returned no move (prediction: %r) — using random legal move",
             prediction,
         )
         return _random_legal_move(board)
