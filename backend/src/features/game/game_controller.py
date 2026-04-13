@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from src.db.models.game import Game, GameStatus, STARTING_FEN
 from src.db.models.move import Move
 from src.db.models.user import User
-from src.features.game.ai.engine import get_ai_move
+from src.features.game.ai.engine import get_ai_move, get_ai_move_elo
 
 
 class NewGameResponse(BaseModel):
@@ -20,6 +20,8 @@ class NewGameResponse(BaseModel):
 class MakeMoveRequest(BaseModel):
     uci: str
     current_fen: str
+    bot_style:  str | None = None
+    target_elo: int | None = None
 
 
 class MakeMoveResponse(BaseModel):
@@ -144,35 +146,57 @@ def make_move(
     fen_after_ai: str | None = None
 
     if new_status == GameStatus.active:
-        # Build SAN history from persisted UCI moves + current player move.
-        san_history: list[str] = []
-        try:
-            history_board = chess.Board()
-            previous_moves = (
-                db.query(Move)
-                .filter(Move.game_id == game_id)
-                .order_by(Move.move_number.asc())
-                .all()
+        if body.target_elo is not None:
+            # ELO mode: build flat UCI history from DB records + current player move
+            uci_history: list[str] = []
+            try:
+                previous_moves = (
+                    db.query(Move)
+                    .filter(Move.game_id == game_id)
+                    .order_by(Move.move_number.asc())
+                    .all()
+                )
+                for m in previous_moves:
+                    uci_history.append(str(m.player_uci))
+                    if m.ai_uci:
+                        uci_history.append(str(m.ai_uci))
+                uci_history.append(body.uci)
+            except Exception:
+                uci_history = [body.uci]
+
+            ai_uci_str = get_ai_move_elo(
+                fen_after_player,
+                uci_history,
+                str(body.bot_style),
+                int(body.target_elo),
             )
+        else:
+            # Magnus mode: build SAN history from persisted UCI moves + current player move
+            san_history: list[str] = []
+            try:
+                history_board = chess.Board()
+                previous_moves = (
+                    db.query(Move)
+                    .filter(Move.game_id == game_id)
+                    .order_by(Move.move_number.asc())
+                    .all()
+                )
+                for m in previous_moves:
+                    player_mv = chess.Move.from_uci(str(m.player_uci))
+                    san_history.append(history_board.san(player_mv))
+                    history_board.push(player_mv)
+                    if m.ai_uci:
+                        ai_mv = chess.Move.from_uci(str(m.ai_uci))
+                        san_history.append(history_board.san(ai_mv))
+                        history_board.push(ai_mv)
+                san_history.append(history_board.san(player_move))
+            except Exception:
+                san_history = []
 
-            for m in previous_moves:
-                player_mv = chess.Move.from_uci(str(m.player_uci))
-                san_history.append(history_board.san(player_mv))
-                history_board.push(player_mv)
+            ai_uci_str = get_ai_move(fen_after_player, san_history)
 
-                if m.ai_uci:
-                    ai_mv = chess.Move.from_uci(str(m.ai_uci))
-                    san_history.append(history_board.san(ai_mv))
-                    history_board.push(ai_mv)
-
-            san_history.append(history_board.san(player_move))
-        except Exception:
-            san_history = []
-
-        # AI responds
-        ai_uci_str = get_ai_move(fen_after_player, san_history)
         if ai_uci_str is None:
-            # No legal moves for AI — shouldn't happen after a non-terminal position, treat as draw
+            # No legal moves for AI — treat as draw
             new_status = GameStatus.draw
         else:
             board.push(chess.Move.from_uci(ai_uci_str))

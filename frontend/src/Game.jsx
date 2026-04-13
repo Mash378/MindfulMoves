@@ -202,28 +202,9 @@ export default function Game() {
 
   const createNewGame = useCallback(async () => {
     try {
-      const isMagnus = difficulty === "magnus";
-      const endpoint = isMagnus ? `${API_URL}/game/new` : `${API_URL}/chess/game/new`;
-      
-      let body = {};
-      if (!isMagnus) {
-        const configMap = {
-          easy:   { elo: 1500, style: "Balanced" },
-          medium: { elo: 1600, style: "Balanced" },
-          hard:   { elo: 1700, style: "Aggressive" }
-        };
-        const config = configMap[difficulty] || configMap.medium;
-
-        body = {
-          player_color: "white",
-          bot_style: config.style,
-          target_elo: config.elo
-        };
-      }
-      const res = await fetch(endpoint, {
+      const res = await fetch(`${API_URL}/game/new`, {
         method: "POST",
         headers: apiHeaders(),
-        body: isMagnus ? null : JSON.stringify(body)
       });
       if (!res.ok) {
         if (res.status === 401) {
@@ -233,8 +214,8 @@ export default function Game() {
         return;
       }
       const data = await res.json();
-      const id = data.game_id || data.session_id;
-      const fen = isMagnus ? data.fen : data.board.fen;
+      const id = data.game_id;
+      const fen = data.fen;
       setGameId(id);
       setCurrentFen(fen);
       setBoard(fenToBoard(fen));
@@ -460,9 +441,19 @@ export default function Game() {
     setRedoStack([]);
   };
 
-  const undoMove = () => {
+  const undoMove = async () => {
     if (undoStack.length === 0 || isThinking) return;
     if (timerEnabled && timer.Light <= 0) return;
+
+    try {
+      const res = await fetch(`${API_URL}/game/${gameId}/undo`, {
+        method: "POST",
+        headers: apiHeaders(),
+      });
+      if (!res.ok) return;
+    } catch {
+      return;
+    }
 
     const currentState = {
       board: board.map(row => [...row]),
@@ -485,7 +476,7 @@ export default function Game() {
     setGameStatus(previousState.gameStatus);
     setTimer(previousState.timer);
     setCastleRights(previousState.castleRights);
-    
+
     setUndoStack((prev) => prev.slice(0, -1));
   };
 
@@ -1031,23 +1022,27 @@ export default function Game() {
       
       setIsThinking(true);
       try {
-        const isMagnus = difficulty.toLowerCase().includes("magnus");
-        const endpoint = isMagnus 
-          ? `${API_URL}/game/${gameId}/move` 
-          : `${API_URL}/chess/game/move`;
-        
+        const configMap = {
+          easy:   { elo: 1500, style: "Balanced" },
+          medium: { elo: 1600, style: "Balanced" },
+          hard:   { elo: 1700, style: "Aggressive" },
+        };
+        const eloConfig = configMap[difficulty.toLowerCase()];
+
         const uci = boardPositionToUci(startRow, startCol, endRow, endCol);
-        
-        const payload = isMagnus 
-          ? { uci, current_fen: currentFen } 
-          : { session_id: gameId, uci };
-        
-        const res = await fetch(endpoint, {
+
+        const payload = {
+          uci,
+          current_fen: currentFen,
+          ...(eloConfig ? { bot_style: eloConfig.style, target_elo: eloConfig.elo } : {}),
+        };
+
+        const res = await fetch(`${API_URL}/game/${gameId}/move`, {
           method: "POST",
           headers: apiHeaders(),
           body: JSON.stringify(payload),
         });
-        
+
         if (!res.ok) {
           if (res.status === 401) {
             navigate("/signup");
@@ -1056,13 +1051,11 @@ export default function Game() {
           setIsThinking(false);
           return;
         }
-        
+
         const data = await res.json();
-        const backendFen = isMagnus ? data.fen : data.board?.fen;
-        const botMoveUci = isMagnus ? data.ai_uci : data.bot_move?.move;
-        const isGameOver = isMagnus 
-          ? !!data.game_over 
-          : !!data.board?.is_game_over;
+        const backendFen = data.fen;
+        const botMoveUci = data.ai_uci;
+        const isGameOver = !!data.game_over;
         
         if (historyEnabled && botMoveUci) {
           const aiFrom = botMoveUci.slice(0, 2);
@@ -1090,14 +1083,10 @@ export default function Game() {
         setCurrentFen(backendFen);
         localStorage.setItem("currentFen", backendFen);
         setBoard(fenToBoard(backendFen));
-        const newStatus = isMagnus 
-          ? data.status 
-          : (isGameOver ? "game_over" : "active");
-        
-        setBackendStatus(newStatus);
-        
+        setBackendStatus(data.status);
+
         if (isGameOver) {
-          setGameStatus(isMagnus ? data.status : "game_over");
+          setGameStatus(data.status);
         } else {
           setGameStatus("playing");
         }
@@ -1180,16 +1169,19 @@ export default function Game() {
     
     setIsThinking(true);
     try {
-      const isMagnus = difficulty.toLowerCase().includes("magnus");
+      const configMap = {
+        easy:   { elo: 1500, style: "Balanced" },
+        medium: { elo: 1600, style: "Balanced" },
+        hard:   { elo: 1700, style: "Aggressive" },
+      };
+      const eloConfig = configMap[difficulty.toLowerCase()];
 
-      const endpoint = isMagnus 
-        ? `${API_URL}/game/${gameId}/move` 
-        : `${API_URL}/chess/game/move`;
-
-      const payload = isMagnus 
-        ? { uci, current_fen: currentFen } 
-        : { session_id: gameId, uci };
-      const res = await fetch(endpoint, {
+      const payload = {
+        uci,
+        current_fen: currentFen,
+        ...(eloConfig ? { bot_style: eloConfig.style, target_elo: eloConfig.elo } : {}),
+      };
+      const res = await fetch(`${API_URL}/game/${gameId}/move`, {
         method: "POST",
         headers: apiHeaders(),
         body: JSON.stringify(payload),
@@ -1211,11 +1203,9 @@ export default function Game() {
       }
 
       const data = await res.json();
-      const backendFen = isMagnus ? data.fen : data.board?.fen;
-      const botMoveUci = isMagnus ? data.ai_uci : data.bot_move?.move;
-      const isGameOver = isMagnus 
-      ? !!data.game_over 
-      : !!data.board?.is_game_over;
+      const backendFen = data.fen;
+      const botMoveUci = data.ai_uci;
+      const isGameOver = !!data.game_over;
       
       if (historyEnabled && botMoveUci) {
         const aiFrom = botMoveUci.slice(0, 2);
@@ -1239,14 +1229,10 @@ export default function Game() {
       setCurrentFen(backendFen);
       localStorage.setItem("currentFen", backendFen);
       setBoard(fenToBoard(backendFen));
-      const newStatus = isMagnus 
-      ? data.status 
-      : (isGameOver ? "game_over" : "active"); 
-
-      setBackendStatus(newStatus);
+      setBackendStatus(data.status);
 
       if (isGameOver) {
-        setGameStatus(isMagnus ? data.status : "game_over");
+        setGameStatus(data.status);
       } else {
         setGameStatus("playing");
       }
