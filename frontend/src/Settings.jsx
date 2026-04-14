@@ -361,7 +361,7 @@ export default function Settings() {
               <div className="space-y-4 text-lg">
                 <h2 className="text-2xl font-semibold mb-12">Account Settings</h2>
                 <div className="flex flex-col gap-6">
-                  <button
+                  {/* <button
                     onClick={() => {setChangeUsername(true); navigate("/login", { state: { fromGame: fromGame, action: "changeUsername" } })}}
                     className={`px-6 py-3 ${buttonBgClass} rounded-lg 
                               ${buttonHoverClass} transition shadow-md w-64 mx-auto`}
@@ -374,11 +374,11 @@ export default function Settings() {
                               ${buttonHoverClass} transition shadow-md w-64 mx-auto`}
                   >
                     Change Password
-                  </button>
+                  </button> */}
                   <button
                     onClick={handleSignOut}
                     className="px-6 py-3 bg-red-500 text-white rounded-lg 
-                              hover:bg-red-600 transition shadow-md w-64 mx-auto mt-4"
+                              hover:bg-red-600 transition shadow-md w-64 mx-auto mt-24"
                   >
                     Sign Out
                   </button>

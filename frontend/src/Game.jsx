@@ -40,7 +40,7 @@ export default function Game() {
   const [gameId, setGameId] = useState("");
   const [currentFen, setCurrentFen] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState("user");
+  const [settingsTab, setSettingsTab] = useState("game actions");
   const [lastMove, setLastMove] = useState(null);
   const [isCheck, setIsCheck] = useState(false);
   const [checkColor, setCheckColor] = useState(null);
@@ -2097,7 +2097,7 @@ export default function Game() {
                       Game Actions
                     </h2>
                     <div className="flex flex-col gap-6">
-                      <div className="flex items-center justify-between p-4 border rounded-lg">
+                      {/* <div className="flex items-center justify-between p-4 border rounded-lg">
                         <div>
                           <h3 className="text-lg font-semibold mb-1">
                             Opponent Profile
@@ -2115,7 +2115,7 @@ export default function Game() {
                         >
                           View Profile
                         </button>
-                      </div>
+                      </div> */}
 
                       <div className="flex items-center justify-between p-4 border rounded-lg">
                         <div>
