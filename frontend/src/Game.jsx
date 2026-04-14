@@ -1673,7 +1673,7 @@ export default function Game() {
         </div>
 
         {historyEnabled && (
-          <div className="ml-6 w-64 bg-gray-800 rounded-lg shadow-lg p-4 flex flex-col h-[calc(100vh-200px)]">
+          <div className="ml-6 w-64 bg-gray-800 rounded-lg shadow-lg p-4 flex flex-col" style={{ height: "512px" }}>
             <h3 className="text-lg font-bold mb-3 text-center text-white">
               Move History
             </h3>
@@ -2118,34 +2118,34 @@ export default function Game() {
                       </div> */}
 
                       <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <div>
+                        
                           <h3 className="text-lg font-semibold mb-1">
                             New Game
                           </h3>
                           <p className="text-sm opacity-75">
                             Start a fresh game with current settings
                           </p>
-                        </div>
+                        
                         <button
                           onClick={() => {
                             handleNewGame();
                             setShowSettings(false);
                           }}
-                          className={`px-4 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
+                          className={`px-6 py-2 ${buttonBgClass} rounded ${buttonHoverClass}`}
                         >
                           New Game
                         </button>
                       </div>
 
                       <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <div>
+                        
                           <h3 className="text-lg font-semibold mb-1">
                             Return to Home
                           </h3>
                           <p className="text-sm opacity-75">
                             Exit to main menu
                           </p>
-                        </div>
+                        
                         <button
                           onClick={() => {
                             handleReturnHome();
