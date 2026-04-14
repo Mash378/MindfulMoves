@@ -15,7 +15,7 @@ function apiHeaders() {
 
 function uciSquareToCoords(square) {
   const col = square.charCodeAt(0) - "a".charCodeAt(0);
-  const row = 8 - parseInt(square[1], 10); 
+  const row = 8 - parseInt(square[1], 10);
   return [row, col];
 }
 
@@ -34,6 +34,7 @@ export default function Game() {
   const [gameStatus, setGameStatus] = useState("playing");
   const [backendStatus, setBackendStatus] = useState("active");
   const [moveHistory, setMoveHistory] = useState([]);
+  const [uciHistory, setUciHistory] = useState([]);
   const [showOpponentProfile, setShowOpponentProfile] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [gameId, setGameId] = useState("");
@@ -77,7 +78,7 @@ export default function Game() {
     username,
     logout,
   } = useSettings();
-  
+
   const isFirstRender = useRef(true);
   const moveHistoryRef = useRef(null);
 
@@ -102,20 +103,20 @@ export default function Game() {
   const isCheckmate = (boardState, kingColor) => {
     const kingInCheck = isKingInCheck(boardState, kingColor);
     if (!kingInCheck) return false;
-    
+
     return !hasAnyLegalMoves(boardState, kingColor);
   };
 
   const isStalematePosition = (boardState, currentPlayerColor) => {
     const kingInCheck = isKingInCheck(boardState, currentPlayerColor);
     if (kingInCheck) return false;
-    
+
     return !hasAnyLegalMoves(boardState, currentPlayerColor);
   };
 
   const isKingInCheck = (boardState, kingColor) => {
     let kingRow, kingCol;
-    
+
     for (let i = 0; i < 8; i++) {
       for (let j = 0; j < 8; j++) {
         const piece = boardState[i][j];
@@ -126,9 +127,9 @@ export default function Game() {
         }
       }
     }
-    
+
     if (kingRow === undefined) return false;
-    
+
     const opponentColor = kingColor === "Light" ? "Dark" : "Light";
     for (let i = 0; i < 8; i++) {
       for (let j = 0; j < 8; j++) {
@@ -140,7 +141,7 @@ export default function Game() {
         }
       }
     }
-    
+
     return false;
   };
 
@@ -149,7 +150,7 @@ export default function Game() {
     const kingCol = 4;
     const rookCol = kingSide ? 7 : 0;
     const targetCol = kingSide ? 6 : 2;
-    
+
     if (color === "Light") {
       if (castleState.whiteKingMoved) return false;
       if (kingSide && castleState.whiteKingRookMoved) return false;
@@ -159,21 +160,21 @@ export default function Game() {
       if (kingSide && castleState.blackKingRookMoved) return false;
       if (!kingSide && castleState.blackQueenRookMoved) return false;
     }
-    
+
     const rookPiece = currentBoard[row][rookCol];
     if (!rookPiece || getPieceType(rookPiece) !== "Rook") return false;
-    
+
     const step = kingSide ? 1 : -1;
     for (let col = kingCol + step; col !== rookCol; col += step) {
       if (currentBoard[row][col]) return false;
     }
-    
+
     for (let col = kingCol; col !== targetCol + step; col += step) {
       if (isSquareUnderAttack(row, col, color, currentBoard)) {
         return false;
       }
     }
-    
+
     return true;
   };
 
@@ -224,6 +225,7 @@ export default function Game() {
       setSelectedPiece(null);
       setValidMoves([]);
       setMoveHistory([]);
+      setUciHistory([]);
       setUndoStack([]);
       setRedoStack([]);
       setLastMove(null);
@@ -235,8 +237,8 @@ export default function Game() {
         blackQueenRookMoved: false,
         blackKingRookMoved: false,
       });
-      setTimer({ 
-        Light: timerDuration, 
+      setTimer({
+        Light: timerDuration,
         active: false,
         hasStarted: false,
       });
@@ -246,7 +248,7 @@ export default function Game() {
       setCheckColor(null);
       setCheckmateWinner(null);
       setIsStalemate(false);
-    } catch (err){
+    } catch (err) {
       console.error("Failed to create game", err);
     }
   }, [navigate, difficulty, timerDuration]);
@@ -267,6 +269,7 @@ export default function Game() {
       setGameStatus(parsed.gameStatus);
       setBackendStatus(parsed.backendStatus || "active");
       setMoveHistory(parsed.moveHistory);
+      setUciHistory(parsed.uciHistory || []);
       setUndoStack(parsed.undoStack || []);
       setRedoStack(parsed.redoStack || []);
       setTimer(parsed.timer);
@@ -274,14 +277,16 @@ export default function Game() {
       setGameId(parsed.gameId || "");
       setCurrentFen(parsed.currentFen || "");
       setLastMove(parsed.lastMove || null);
-      setCastleRights(parsed.castleRights || {
-        whiteKingMoved: false,
-        whiteQueenRookMoved: false,
-        whiteKingRookMoved: false,
-        blackKingMoved: false,
-        blackQueenRookMoved: false,
-        blackKingRookMoved: false,
-      });
+      setCastleRights(
+        parsed.castleRights || {
+          whiteKingMoved: false,
+          whiteQueenRookMoved: false,
+          whiteKingRookMoved: false,
+          blackKingMoved: false,
+          blackQueenRookMoved: false,
+          blackKingRookMoved: false,
+        },
+      );
       localStorage.removeItem("gameState");
       return;
     }
@@ -294,6 +299,7 @@ export default function Game() {
       setBoard(fenToBoard(storedFen));
       setGameStatus("playing");
       setBackendStatus("active");
+      setUciHistory([]);
     } else {
       createNewGame();
     }
@@ -306,6 +312,7 @@ export default function Game() {
         gameStatus,
         backendStatus,
         moveHistory,
+        uciHistory,
         undoStack,
         redoStack,
         timer,
@@ -322,6 +329,7 @@ export default function Game() {
     gameStatus,
     backendStatus,
     moveHistory,
+    uciHistory,
     undoStack,
     redoStack,
     timer,
@@ -334,17 +342,23 @@ export default function Game() {
 
   useEffect(() => {
     let interval;
-    if (timer.active && gameStatus === "playing" && timerEnabled && !isThinking && timer.hasStarted) {
+    if (
+      timer.active &&
+      gameStatus === "playing" &&
+      timerEnabled &&
+      !isThinking &&
+      timer.hasStarted
+    ) {
       interval = setInterval(() => {
         setTimer((prev) => {
           const newTime = Math.max(0, prev.Light - 1);
-          
+
           if (newTime === 0) {
             setGameStatus("timeout");
             setBackendStatus("black_wins");
             clearInterval(interval);
           }
-          
+
           return {
             ...prev,
             Light: newTime,
@@ -356,20 +370,25 @@ export default function Game() {
   }, [timer.active, gameStatus, timerEnabled, isThinking, timer.hasStarted]);
 
   useEffect(() => {
-    if (gameId && timerEnabled && !timer.hasStarted && gameStatus === "playing") {
-      setTimer(prev => ({
+    if (
+      gameId &&
+      timerEnabled &&
+      !timer.hasStarted &&
+      gameStatus === "playing"
+    ) {
+      setTimer((prev) => ({
         ...prev,
-        Light: timerDuration
+        Light: timerDuration,
       }));
     }
   }, [timerDuration, timerEnabled, gameId, gameStatus, timer.hasStarted]);
 
   useEffect(() => {
     if (board.length === 0) return;
-    
+
     const lightInCheck = isKingInCheck(board, "Light");
     const darkInCheck = isKingInCheck(board, "Dark");
-    
+
     if (isCheckmate(board, "Light")) {
       setCheckmateWinner("Dark");
       setBackendStatus("black_wins");
@@ -379,7 +398,7 @@ export default function Game() {
       setIsStalemate(false);
       return;
     }
-    
+
     if (isCheckmate(board, "Dark")) {
       setCheckmateWinner("Light");
       setBackendStatus("white_wins");
@@ -389,8 +408,12 @@ export default function Game() {
       setIsStalemate(false);
       return;
     }
-    
-    if (isStalematePosition(board, "Light") && gameStatus === "playing" && !lightInCheck) {
+
+    if (
+      isStalematePosition(board, "Light") &&
+      gameStatus === "playing" &&
+      !lightInCheck
+    ) {
       setIsStalemate(true);
       setBackendStatus("draw");
       setGameStatus("stalemate");
@@ -398,8 +421,12 @@ export default function Game() {
       setCheckColor(null);
       return;
     }
-    
-    if (isStalematePosition(board, "Dark") && gameStatus === "playing" && !darkInCheck) {
+
+    if (
+      isStalematePosition(board, "Dark") &&
+      gameStatus === "playing" &&
+      !darkInCheck
+    ) {
       setIsStalemate(true);
       setBackendStatus("draw");
       setGameStatus("stalemate");
@@ -407,7 +434,7 @@ export default function Game() {
       setCheckColor(null);
       return;
     }
-    
+
     if (lightInCheck) {
       setIsCheck(true);
       setCheckColor("Light");
@@ -428,8 +455,9 @@ export default function Game() {
 
   const saveToUndoStack = () => {
     const currentState = {
-      board: board.map(row => [...row]),
+      board: board.map((row) => [...row]),
       moveHistory: [...moveHistory],
+      uciHistory: [...uciHistory],
       lastMove: lastMove,
       currentFen: currentFen,
       backendStatus: backendStatus,
@@ -441,23 +469,14 @@ export default function Game() {
     setRedoStack([]);
   };
 
-  const undoMove = async () => {
+  const undoMove = () => {
     if (undoStack.length === 0 || isThinking) return;
     if (timerEnabled && timer.Light <= 0) return;
 
-    try {
-      const res = await fetch(`${API_URL}/game/${gameId}/undo`, {
-        method: "POST",
-        headers: apiHeaders(),
-      });
-      if (!res.ok) return;
-    } catch {
-      return;
-    }
-
     const currentState = {
-      board: board.map(row => [...row]),
+      board: board.map((row) => [...row]),
       moveHistory: [...moveHistory],
+      uciHistory: [...uciHistory],
       lastMove: lastMove,
       currentFen: currentFen,
       backendStatus: backendStatus,
@@ -470,6 +489,7 @@ export default function Game() {
     const previousState = undoStack[undoStack.length - 1];
     setBoard(previousState.board);
     setMoveHistory(previousState.moveHistory);
+    setUciHistory(previousState.uciHistory || []);
     setLastMove(previousState.lastMove);
     setCurrentFen(previousState.currentFen);
     setBackendStatus(previousState.backendStatus);
@@ -485,8 +505,9 @@ export default function Game() {
     if (timerEnabled && timer.Light <= 0) return;
 
     const currentState = {
-      board: board.map(row => [...row]),
+      board: board.map((row) => [...row]),
       moveHistory: [...moveHistory],
+      uciHistory: [...uciHistory],
       lastMove: lastMove,
       currentFen: currentFen,
       backendStatus: backendStatus,
@@ -499,13 +520,14 @@ export default function Game() {
     const nextState = redoStack[redoStack.length - 1];
     setBoard(nextState.board);
     setMoveHistory(nextState.moveHistory);
+    setUciHistory(nextState.uciHistory || []);
     setLastMove(nextState.lastMove);
     setCurrentFen(nextState.currentFen);
     setBackendStatus(nextState.backendStatus);
     setGameStatus(nextState.gameStatus);
     setTimer(nextState.timer);
     setCastleRights(nextState.castleRights);
-    
+
     setRedoStack((prev) => prev.slice(0, -1));
   };
 
@@ -539,15 +561,15 @@ export default function Game() {
     endCol,
     capturedPiece,
     isPromotion = false,
-    promotionPiece = null
+    promotionPiece = null,
   ) => {
     const pieceType = getPieceType(piece);
     const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
     const ranks = ["8", "7", "6", "5", "4", "3", "2", "1"];
-    
+
     const startSquare = files[startCol] + ranks[startRow];
     const endSquare = files[endCol] + ranks[endRow];
-    
+
     // For pawn moves
     if (pieceType === "Pawn") {
       if (capturedPiece) {
@@ -565,23 +587,41 @@ export default function Game() {
         return endSquare;
       }
     }
-    
+
     // For piece moves
     let pieceLetter = "";
     switch (pieceType) {
-      case "Knight": pieceLetter = "N"; break;
-      case "Bishop": pieceLetter = "B"; break;
-      case "Rook": pieceLetter = "R"; break;
-      case "Queen": pieceLetter = "Q"; break;
-      case "King": pieceLetter = "K"; break;
-      default: pieceLetter = "";
+      case "Knight":
+        pieceLetter = "N";
+        break;
+      case "Bishop":
+        pieceLetter = "B";
+        break;
+      case "Rook":
+        pieceLetter = "R";
+        break;
+      case "Queen":
+        pieceLetter = "Q";
+        break;
+      case "King":
+        pieceLetter = "K";
+        break;
+      default:
+        pieceLetter = "";
     }
-    
+
     const captureSymbol = capturedPiece ? "x" : "";
     return pieceLetter + captureSymbol + endSquare;
   };
 
-  const isValidMove = (startRow, startCol, endRow, endCol, piece, currentBoard = board) => {
+  const isValidMove = (
+    startRow,
+    startCol,
+    endRow,
+    endCol,
+    piece,
+    currentBoard = board,
+  ) => {
     const pieceType = getPieceType(piece);
     const pieceColor = getPieceColor(piece);
     const targetPiece = currentBoard[endRow][endCol];
@@ -604,7 +644,13 @@ export default function Game() {
         );
         break;
       case "Rook":
-        isValidBasicMove = isValidRookMove(startRow, startCol, endRow, endCol, currentBoard);
+        isValidBasicMove = isValidRookMove(
+          startRow,
+          startCol,
+          endRow,
+          endCol,
+          currentBoard,
+        );
         break;
       case "Knight":
         isValidBasicMove = isValidKnightMove(
@@ -615,13 +661,32 @@ export default function Game() {
         );
         break;
       case "Bishop":
-        isValidBasicMove = isValidBishopMove(startRow, startCol, endRow, endCol, currentBoard);
+        isValidBasicMove = isValidBishopMove(
+          startRow,
+          startCol,
+          endRow,
+          endCol,
+          currentBoard,
+        );
         break;
       case "Queen":
-        isValidBasicMove = isValidQueenMove(startRow, startCol, endRow, endCol, currentBoard);
+        isValidBasicMove = isValidQueenMove(
+          startRow,
+          startCol,
+          endRow,
+          endCol,
+          currentBoard,
+        );
         break;
       case "King":
-        isValidBasicMove = isValidKingMove(startRow, startCol, endRow, endCol, pieceColor, currentBoard);
+        isValidBasicMove = isValidKingMove(
+          startRow,
+          startCol,
+          endRow,
+          endCol,
+          pieceColor,
+          currentBoard,
+        );
         break;
       default:
         return false;
@@ -823,7 +888,13 @@ export default function Game() {
     return false;
   };
 
-  const isValidRookMove = (startRow, startCol, endRow, endCol, currentBoard) => {
+  const isValidRookMove = (
+    startRow,
+    startCol,
+    endRow,
+    endCol,
+    currentBoard,
+  ) => {
     if (startRow !== endRow && startCol !== endCol) return false;
 
     if (startRow === endRow) {
@@ -848,7 +919,13 @@ export default function Game() {
     return (rowDiff === 2 && colDiff === 1) || (rowDiff === 1 && colDiff === 2);
   };
 
-  const isValidBishopMove = (startRow, startCol, endRow, endCol, currentBoard) => {
+  const isValidBishopMove = (
+    startRow,
+    startCol,
+    endRow,
+    endCol,
+    currentBoard,
+  ) => {
     if (Math.abs(endRow - startRow) !== Math.abs(endCol - startCol))
       return false;
 
@@ -865,26 +942,39 @@ export default function Game() {
     return true;
   };
 
-  const isValidQueenMove = (startRow, startCol, endRow, endCol, currentBoard) => {
+  const isValidQueenMove = (
+    startRow,
+    startCol,
+    endRow,
+    endCol,
+    currentBoard,
+  ) => {
     return (
       isValidRookMove(startRow, startCol, endRow, endCol, currentBoard) ||
       isValidBishopMove(startRow, startCol, endRow, endCol, currentBoard)
     );
   };
 
-  const isValidKingMove = (startRow, startCol, endRow, endCol, pieceColor = null, currentBoard = board) => {
+  const isValidKingMove = (
+    startRow,
+    startCol,
+    endRow,
+    endCol,
+    pieceColor = null,
+    currentBoard = board,
+  ) => {
     const rowDiff = Math.abs(endRow - startRow);
     const colDiff = Math.abs(endCol - startCol);
-    
+
     if (rowDiff <= 1 && colDiff <= 1) {
       return true;
     }
-    
+
     if (rowDiff === 0 && colDiff === 2 && pieceColor) {
       const isKingSide = endCol > startCol;
       return canCastle(pieceColor, isKingSide, currentBoard, castleRights);
     }
-    
+
     return false;
   };
 
@@ -909,36 +999,36 @@ export default function Game() {
     const kingToCol = isKingSide ? 6 : 2;
     const rookFromCol = isKingSide ? 7 : 0;
     const rookToCol = isKingSide ? 5 : 3;
-    
-    const newBoard = board.map(row => [...row]);
+
+    const newBoard = board.map((row) => [...row]);
     const king = newBoard[row][kingFromCol];
     const rook = newBoard[row][rookFromCol];
-    
+
     newBoard[row][kingToCol] = king;
     newBoard[row][kingFromCol] = "";
     newBoard[row][rookToCol] = rook;
     newBoard[row][rookFromCol] = "";
-    
+
     setBoard(newBoard);
-    
+
     if (color === "Light") {
-      setCastleRights(prev => ({
+      setCastleRights((prev) => ({
         ...prev,
         whiteKingMoved: true,
         whiteKingRookMoved: true,
-        whiteQueenRookMoved: true
+        whiteQueenRookMoved: true,
       }));
     } else {
-      setCastleRights(prev => ({
+      setCastleRights((prev) => ({
         ...prev,
         blackKingMoved: true,
         blackKingRookMoved: true,
-        blackQueenRookMoved: true
+        blackQueenRookMoved: true,
       }));
     }
-    
+
     setLastMove({ from: [row, kingFromCol], to: [row, kingToCol] });
-    
+
     return newBoard;
   };
 
@@ -946,8 +1036,14 @@ export default function Game() {
     if (timerEnabled && timer.hasStarted && timer.Light <= 0) {
       return;
     }
-    
-    if (isThinking || backendStatus !== "active" || gameStatus === "checkmate" || gameStatus === "stalemate") return;
+
+    if (
+      isThinking ||
+      backendStatus !== "active" ||
+      gameStatus === "checkmate" ||
+      gameStatus === "stalemate"
+    )
+      return;
 
     const piece = board[row][col];
     const pieceColor = getPieceColor(piece);
@@ -967,7 +1063,7 @@ export default function Game() {
         const movingPiece = board[selectedPiece.row][selectedPiece.col];
         const pieceType = getPieceType(movingPiece);
         const pieceColor = getPieceColor(movingPiece);
-        
+
         if (pieceType === "King" && Math.abs(col - selectedPiece.col) === 2) {
           const isKingSide = col > selectedPiece.col;
           movePiece(selectedPiece.row, selectedPiece.col, row, col, true);
@@ -981,30 +1077,58 @@ export default function Game() {
     }
   };
 
-  const movePiece = async (startRow, startCol, endRow, endCol, isCastle = false) => {
+  const movePiece = async (
+    startRow,
+    startCol,
+    endRow,
+    endCol,
+    isCastle = false,
+  ) => {
     if (timerEnabled && timer.hasStarted && timer.Light <= 0) {
       return;
     }
-    
+
+    const previousBoard = board.map((row) => [...row]);
+    const previousMoveHistory = [...moveHistory];
+    const previousLastMove = lastMove;
+    const previousCastleRights = { ...castleRights };
+    const previousRedoStack = [...redoStack];
+    const previousTimer = { ...timer };
+    const historyBeforeMove = [...uciHistory];
+
     saveToUndoStack();
-    
+
     if (timerEnabled && !timer.hasStarted) {
-      setTimer(prev => ({ 
-        ...prev, 
-        active: true, 
-        hasStarted: true 
+      setTimer((prev) => ({
+        ...prev,
+        active: true,
+        hasStarted: true,
       }));
     }
-    
+
     const movingPiece = board[startRow][startCol];
     const capturedPiece = board[endRow][endCol];
-    
+
+    let promotionPiece = null;
+    let isPromotion = false;
+    if (!isCastle && getPieceType(movingPiece) === "Pawn" && endRow === 0) {
+      promotionPiece = "q";
+      isPromotion = true;
+    }
+
+    const uci = boardPositionToUci(
+      startRow,
+      startCol,
+      endRow,
+      endCol,
+      promotionPiece,
+    );
+
     if (isCastle) {
       const color = getPieceColor(movingPiece);
       const isKingSide = endCol > startCol;
       executeCastle(color, isKingSide);
-      
-      // Add castle notation to history
+
       if (historyEnabled) {
         const castleNotation = isKingSide ? "O-O" : "O-O-O";
         setMoveHistory((prev) => [
@@ -1019,168 +1143,81 @@ export default function Game() {
           },
         ]);
       }
-      
-      setIsThinking(true);
-      try {
-        const configMap = {
-          easy:   { elo: 1500, style: "Balanced" },
-          medium: { elo: 1600, style: "Balanced" },
-          hard:   { elo: 1700, style: "Aggressive" },
-        };
-        const eloConfig = configMap[difficulty.toLowerCase()];
+    } else {
+      if (historyEnabled) {
+        const notation = getChessNotation(
+          movingPiece,
+          startRow,
+          startCol,
+          endRow,
+          endCol,
+          capturedPiece,
+          isPromotion,
+          promotionPiece,
+        );
+        setMoveHistory((prev) => [
+          ...prev,
+          {
+            player: "Light",
+            notation,
+            piece: movingPiece,
+            from: [startRow, startCol],
+            to: [endRow, endCol],
+            captured: capturedPiece,
+          },
+        ]);
+      }
 
-        const uci = boardPositionToUci(startRow, startCol, endRow, endCol);
+      setLastMove({ from: [startRow, startCol], to: [endRow, endCol] });
 
-        const payload = {
-          uci,
-          current_fen: currentFen,
-          ...(eloConfig ? { bot_style: eloConfig.style, target_elo: eloConfig.elo } : {}),
-        };
+      const newBoard = board.map((row) => [...row]);
+      newBoard[endRow][endCol] = promotionPiece ? "LightQueen" : movingPiece;
+      newBoard[startRow][startCol] = "";
+      setBoard(newBoard);
 
-        const res = await fetch(`${API_URL}/game/${gameId}/move`, {
-          method: "POST",
-          headers: apiHeaders(),
-          body: JSON.stringify(payload),
-        });
+      if (getPieceType(movingPiece) === "King") {
+        if (getPieceColor(movingPiece) === "Light") {
+          setCastleRights((prev) => ({ ...prev, whiteKingMoved: true }));
+        } else {
+          setCastleRights((prev) => ({ ...prev, blackKingMoved: true }));
+        }
+      }
 
-        if (!res.ok) {
-          if (res.status === 401) {
-            navigate("/signup");
-            return;
+      if (getPieceType(movingPiece) === "Rook") {
+        if (startCol === 0) {
+          if (getPieceColor(movingPiece) === "Light") {
+            setCastleRights((prev) => ({ ...prev, whiteQueenRookMoved: true }));
+          } else {
+            setCastleRights((prev) => ({ ...prev, blackQueenRookMoved: true }));
           }
-          setIsThinking(false);
-          return;
-        }
-
-        const data = await res.json();
-        const backendFen = data.fen;
-        const botMoveUci = data.ai_uci;
-        const isGameOver = !!data.game_over;
-        
-        if (historyEnabled && botMoveUci) {
-          const aiFrom = botMoveUci.slice(0, 2);
-          const aiTo = botMoveUci.slice(2, 4);
-          const [afr, afc] = uciSquareToCoords(aiFrom);
-          const [atr, atc] = uciSquareToCoords(aiTo);
-          setLastMove({ from: [afr, afc], to: [atr, atc] });
-          
-          // Convert UCI to algebraic notation for bot moves
-          const fromAlgebraic = aiFrom;
-          const toAlgebraic = aiTo;
-          setMoveHistory((prev) => [
-            ...prev,
-            {
-              player: "Dark",
-              notation: `${toAlgebraic}`,
-              piece: "AI",
-              from: aiFrom,
-              to: aiTo,
-              captured: null,
-            },
-          ]);
-        }
-        
-        setCurrentFen(backendFen);
-        localStorage.setItem("currentFen", backendFen);
-        setBoard(fenToBoard(backendFen));
-        setBackendStatus(data.status);
-
-        if (isGameOver) {
-          setGameStatus(data.status);
-        } else {
-          setGameStatus("playing");
-        }
-      } catch {
-      } finally {
-        setIsThinking(false);
-      }
-      return;
-    }
-
-    let promotionPiece = null;
-    let isPromotion = false;
-    if (getPieceType(movingPiece) === "Pawn" && endRow === 0) {
-      promotionPiece = "q";
-      isPromotion = true;
-    }
-
-    const uci = boardPositionToUci(
-      startRow,
-      startCol,
-      endRow,
-      endCol,
-      promotionPiece,
-    );
-
-    if (historyEnabled) {
-      const notation = getChessNotation(
-        movingPiece,
-        startRow,
-        startCol,
-        endRow,
-        endCol,
-        capturedPiece,
-        isPromotion,
-        promotionPiece
-      );
-      setMoveHistory((prev) => [
-        ...prev,
-        {
-          player: "Light",
-          notation,
-          piece: movingPiece,
-          from: [startRow, startCol],
-          to: [endRow, endCol],
-          captured: capturedPiece,
-        },
-      ]);
-    }
-
-    setLastMove({ from: [startRow, startCol], to: [endRow, endCol] });
-
-    const newBoard = board.map((row) => [...row]);
-    newBoard[endRow][endCol] = promotionPiece ? "LightQueen" : movingPiece;
-    newBoard[startRow][startCol] = "";
-    setBoard(newBoard);
-    
-    if (getPieceType(movingPiece) === "King") {
-      if (getPieceColor(movingPiece) === "Light") {
-        setCastleRights(prev => ({ ...prev, whiteKingMoved: true }));
-      } else {
-        setCastleRights(prev => ({ ...prev, blackKingMoved: true }));
-      }
-    }
-    
-    if (getPieceType(movingPiece) === "Rook") {
-      if (startCol === 0) {
-        if (getPieceColor(movingPiece) === "Light") {
-          setCastleRights(prev => ({ ...prev, whiteQueenRookMoved: true }));
-        } else {
-          setCastleRights(prev => ({ ...prev, blackQueenRookMoved: true }));
-        }
-      } else if (startCol === 7) {
-        if (getPieceColor(movingPiece) === "Light") {
-          setCastleRights(prev => ({ ...prev, whiteKingRookMoved: true }));
-        } else {
-          setCastleRights(prev => ({ ...prev, blackKingRookMoved: true }));
+        } else if (startCol === 7) {
+          if (getPieceColor(movingPiece) === "Light") {
+            setCastleRights((prev) => ({ ...prev, whiteKingRookMoved: true }));
+          } else {
+            setCastleRights((prev) => ({ ...prev, blackKingRookMoved: true }));
+          }
         }
       }
     }
-    
+
     setIsThinking(true);
     try {
       const configMap = {
-        easy:   { elo: 1500, style: "Balanced" },
+        easy: { elo: 1500, style: "Balanced" },
         medium: { elo: 1600, style: "Balanced" },
-        hard:   { elo: 1700, style: "Aggressive" },
+        hard: { elo: 1700, style: "Aggressive" },
       };
       const eloConfig = configMap[difficulty.toLowerCase()];
 
       const payload = {
         uci,
         current_fen: currentFen,
-        ...(eloConfig ? { bot_style: eloConfig.style, target_elo: eloConfig.elo } : {}),
+        history_uci: historyBeforeMove,
+        ...(eloConfig
+          ? { bot_style: eloConfig.style, target_elo: eloConfig.elo }
+          : {}),
       };
+
       const res = await fetch(`${API_URL}/game/${gameId}/move`, {
         method: "POST",
         headers: apiHeaders(),
@@ -1195,8 +1232,30 @@ export default function Game() {
         const errData = await res.json().catch(() => null);
         if (res.status === 409 && errData?.detail?.server_fen) {
           const serverFen = errData.detail.server_fen;
+          const serverHistory = errData?.detail?.server_history_uci;
           setCurrentFen(serverFen);
           setBoard(fenToBoard(serverFen));
+          setMoveHistory([]);
+          setUciHistory(Array.isArray(serverHistory) ? serverHistory : []);
+          setUndoStack([]);
+          setRedoStack([]);
+          setLastMove(null);
+          setCastleRights({
+            whiteKingMoved: false,
+            whiteQueenRookMoved: false,
+            whiteKingRookMoved: false,
+            blackKingMoved: false,
+            blackQueenRookMoved: false,
+            blackKingRookMoved: false,
+          });
+        } else {
+          setBoard(previousBoard);
+          setMoveHistory(previousMoveHistory);
+          setLastMove(previousLastMove);
+          setCastleRights(previousCastleRights);
+          setUndoStack((prev) => prev.slice(0, -1));
+          setRedoStack(previousRedoStack);
+          setTimer(previousTimer);
         }
         setIsThinking(false);
         return;
@@ -1206,7 +1265,11 @@ export default function Game() {
       const backendFen = data.fen;
       const botMoveUci = data.ai_uci;
       const isGameOver = !!data.game_over;
-      
+      const newUciHistory = botMoveUci
+        ? [...historyBeforeMove, uci, botMoveUci]
+        : [...historyBeforeMove, uci];
+      setUciHistory(newUciHistory);
+
       if (historyEnabled && botMoveUci) {
         const aiFrom = botMoveUci.slice(0, 2);
         const aiTo = botMoveUci.slice(2, 4);
@@ -1232,12 +1295,27 @@ export default function Game() {
       setBackendStatus(data.status);
 
       if (isGameOver) {
-        setGameStatus(data.status);
+        if (data.status === "white_wins") {
+          setCheckmateWinner("Light");
+          setGameStatus("checkmate");
+        } else if (data.status === "black_wins") {
+          setCheckmateWinner("Dark");
+          setGameStatus("checkmate");
+        } else {
+          setIsStalemate(true);
+          setGameStatus("stalemate");
+        }
       } else {
         setGameStatus("playing");
       }
     } catch {
-      setBoard(board);
+      setBoard(previousBoard);
+      setMoveHistory(previousMoveHistory);
+      setLastMove(previousLastMove);
+      setCastleRights(previousCastleRights);
+      setUndoStack((prev) => prev.slice(0, -1));
+      setRedoStack(previousRedoStack);
+      setTimer(previousTimer);
     } finally {
       setIsThinking(false);
     }
@@ -1347,27 +1425,38 @@ export default function Game() {
     <div className="min-h-screen flex flex-col items-center justify-center">
       <div className="mb-4 flex items-center justify-center space-x-4">
         {timerEnabled && (
-          <div className={`px-4 py-2 ${buttonBgClass} rounded flex items-center justify-center`}>
+          <div
+            className={`px-4 py-2 ${buttonBgClass} rounded flex items-center justify-center`}
+          >
             <span>Time: {formatTime(timer.Light)}</span>
           </div>
         )}
-        
+
         {/* Check Message - Yellow */}
-        {isCheck && checkColor && gameStatus !== "checkmate" && gameStatus !== "stalemate" && (
-          <div className="px-4 py-2 rounded bg-yellow-500 text-white font-bold animate-pulse">
-            ⚠️ CHECK! {checkColor === "Light" ? "Your king" : "Opponent's king"} is in check! ⚠️
-          </div>
-        )}
-        
+        {isCheck &&
+          checkColor &&
+          gameStatus !== "checkmate" &&
+          gameStatus !== "stalemate" && (
+            <div className="px-4 py-2 rounded bg-yellow-500 text-white font-bold animate-pulse">
+              ⚠️ CHECK!{" "}
+              {checkColor === "Light" ? "Your king" : "Opponent's king"} is in
+              check! ⚠️
+            </div>
+          )}
+
         {/* Checkmate Message - Green/Red with action buttons */}
         {checkmateWinner && gameStatus === "checkmate" && (
           <div className="flex items-center space-x-3">
-            <div className={`px-4 py-2 rounded font-bold ${
-              checkmateWinner === "Light" 
-                ? "bg-green-600 text-white" 
-                : "bg-red-600 text-white"
-            }`}>
-              {checkmateWinner === "Light" ? "🏆 CHECKMATE! You Win! 🏆" : "💀 CHECKMATE! You Lose! 💀"}
+            <div
+              className={`px-4 py-2 rounded font-bold ${
+                checkmateWinner === "Light"
+                  ? "bg-green-600 text-white"
+                  : "bg-red-600 text-white"
+              }`}
+            >
+              {checkmateWinner === "Light"
+                ? "🏆 CHECKMATE! You Win! 🏆"
+                : "💀 CHECKMATE! You Lose! 💀"}
             </div>
             <button
               onClick={handleNewGame}
@@ -1383,7 +1472,7 @@ export default function Game() {
             </button>
           </div>
         )}
-        
+
         {/* Stalemate Message - Orange with action buttons */}
         {isStalemate && gameStatus === "stalemate" && (
           <div className="flex items-center space-x-3">
@@ -1404,7 +1493,7 @@ export default function Game() {
             </button>
           </div>
         )}
-        
+
         {/* Status Message - Only show if not checkmate or stalemate */}
         {!checkmateWinner && !isStalemate && (
           <div
@@ -1423,12 +1512,24 @@ export default function Game() {
             {getStatusMessage()}
           </div>
         )}
-        
+
         <button
           onClick={undoMove}
-          disabled={undoStack.length === 0 || isThinking || backendStatus !== "active" || checkmateWinner || isStalemate || (timerEnabled && timer.hasStarted && timer.Light <= 0)}
+          disabled={
+            undoStack.length === 0 ||
+            isThinking ||
+            backendStatus !== "active" ||
+            checkmateWinner ||
+            isStalemate ||
+            (timerEnabled && timer.hasStarted && timer.Light <= 0)
+          }
           className={`px-4 py-2 rounded ${
-            undoStack.length === 0 || isThinking || backendStatus !== "active" || checkmateWinner || isStalemate || (timerEnabled && timer.hasStarted && timer.Light <= 0)
+            undoStack.length === 0 ||
+            isThinking ||
+            backendStatus !== "active" ||
+            checkmateWinner ||
+            isStalemate ||
+            (timerEnabled && timer.hasStarted && timer.Light <= 0)
               ? "bg-gray-400 cursor-not-allowed"
               : `${buttonBgClass} ${buttonHoverClass}`
           }`}
@@ -1437,9 +1538,21 @@ export default function Game() {
         </button>
         <button
           onClick={redoMove}
-          disabled={redoStack.length === 0 || isThinking || backendStatus !== "active" || checkmateWinner || isStalemate || (timerEnabled && timer.hasStarted && timer.Light <= 0)}
+          disabled={
+            redoStack.length === 0 ||
+            isThinking ||
+            backendStatus !== "active" ||
+            checkmateWinner ||
+            isStalemate ||
+            (timerEnabled && timer.hasStarted && timer.Light <= 0)
+          }
           className={`px-4 py-2 rounded ${
-            redoStack.length === 0 || isThinking || backendStatus !== "active" || checkmateWinner || isStalemate || (timerEnabled && timer.hasStarted && timer.Light <= 0)
+            redoStack.length === 0 ||
+            isThinking ||
+            backendStatus !== "active" ||
+            checkmateWinner ||
+            isStalemate ||
+            (timerEnabled && timer.hasStarted && timer.Light <= 0)
               ? "bg-gray-400 cursor-not-allowed"
               : `${buttonBgClass} ${buttonHoverClass}`
           }`}
@@ -1457,12 +1570,15 @@ export default function Game() {
       <div className="flex">
         <div className="relative">
           <div className="flex">
-            <div className="flex flex-col justify-between mr-2" style={{ height: '512px' }}>
+            <div
+              className="flex flex-col justify-between mr-2"
+              style={{ height: "512px" }}
+            >
               {ranks.map((rank, index) => (
-                <div 
-                  key={`rank-${rank}`} 
+                <div
+                  key={`rank-${rank}`}
                   className={`${getLabelStyle()} text-sm font-bold flex items-center justify-center`}
-                  style={{ width: '24px', height: '64px' }}
+                  style={{ width: "24px", height: "64px" }}
                 >
                   {rank}
                 </div>
@@ -1472,7 +1588,7 @@ export default function Game() {
             <div>
               <div
                 className={`grid grid-cols-8 gap-0 border-2 border-gray-800 ${isThinking ? "opacity-75 pointer-events-none" : ""}`}
-                style={{ width: '512px', height: '512px' }}
+                style={{ width: "512px", height: "512px" }}
               >
                 {board.map((row, rowIndex) =>
                   row.map((piece, colIndex) => {
@@ -1488,10 +1604,13 @@ export default function Game() {
                       lastMove &&
                       lastMove.to[0] === rowIndex &&
                       lastMove.to[1] === colIndex;
-                    const isSelected = selectedPiece?.row===rowIndex && selectedPiece?.col===colIndex;
-                    const isKingInCheckNow = isCheck && 
-                      ((piece === "LightKing" && checkColor === "Light") || 
-                      (piece === "DarkKing" && checkColor === "Dark"));
+                    const isSelected =
+                      selectedPiece?.row === rowIndex &&
+                      selectedPiece?.col === colIndex;
+                    const isKingInCheckNow =
+                      isCheck &&
+                      ((piece === "LightKing" && checkColor === "Light") ||
+                        (piece === "DarkKing" && checkColor === "Dark"));
                     const imagePath = getPieceImage(piece);
 
                     return (
@@ -1500,9 +1619,15 @@ export default function Game() {
                         onClick={() => handleSquareClick(rowIndex, colIndex)}
                         className={`
                           w-16 h-16 flex items-center justify-center cursor-pointer relative
-                          ${isLastMoveFrom ? "bg-yellow-400 bg-opacity-20" :
-                            isLastMoveTo ? "bg-green-400 bg-opacity-20" :
-                            isDarkSquare ? "bg-gray-600" : "bg-gray-300"}
+                          ${
+                            isLastMoveFrom
+                              ? "bg-yellow-400 bg-opacity-20"
+                              : isLastMoveTo
+                                ? "bg-green-400 bg-opacity-20"
+                                : isDarkSquare
+                                  ? "bg-gray-600"
+                                  : "bg-gray-300"
+                          }
                           ${isSelected ? "ring-2 ring-yellow-400 ring-inset" : ""}
                           ${isKingInCheckNow ? "ring-4 ring-red-500 ring-inset animate-pulse" : ""}
                           hover:opacity-75 transition-opacity
@@ -1529,12 +1654,15 @@ export default function Game() {
                 )}
               </div>
 
-              <div className="mt-1 w-full flex justify-between px-0" style={{ width: '512px' }}>
+              <div
+                className="mt-1 w-full flex justify-between px-0"
+                style={{ width: "512px" }}
+              >
                 {files.map((file, index) => (
-                  <div 
-                    key={`file-${file}`} 
+                  <div
+                    key={`file-${file}`}
                     className={`${getLabelStyle()} text-sm font-bold flex items-center justify-center`}
-                    style={{ width: '64px' }}
+                    style={{ width: "64px" }}
                   >
                     {file}
                   </div>
@@ -1549,10 +1677,7 @@ export default function Game() {
             <h3 className="text-lg font-bold mb-3 text-center text-white">
               Move History
             </h3>
-            <div 
-              ref={moveHistoryRef}
-              className="flex-1 overflow-y-auto"
-            >
+            <div ref={moveHistoryRef} className="flex-1 overflow-y-auto">
               {moveHistory.length === 0 ? (
                 <p className="text-gray-400 text-center">No moves yet</p>
               ) : (
@@ -1563,25 +1688,28 @@ export default function Game() {
                       pairedMoves.push({
                         moveNumber: i / 2 + 1,
                         whiteMove: moveHistory[i],
-                        blackMove: moveHistory[i + 1]
+                        blackMove: moveHistory[i + 1],
                       });
                     }
-                    return pairedMoves.slice().reverse().map((pair) => (
-                      <div
-                        key={pair.moveNumber}
-                        className="flex justify-between items-center p-2 bg-gray-700 rounded text-white"
-                      >
-                        <span className="font-mono w-8 text-gray-400">
-                          {pair.moveNumber}.
-                        </span>
-                        <span className="font-mono flex-1 ml-2">
-                          {pair.whiteMove ? pair.whiteMove.notation : ""}
-                        </span>
-                        <span className="font-mono flex-1 ml-4">
-                          {pair.blackMove ? pair.blackMove.notation : ""}
-                        </span>
-                      </div>
-                    ));
+                    return pairedMoves
+                      .slice()
+                      .reverse()
+                      .map((pair) => (
+                        <div
+                          key={pair.moveNumber}
+                          className="flex justify-between items-center p-2 bg-gray-700 rounded text-white"
+                        >
+                          <span className="font-mono w-8 text-gray-400">
+                            {pair.moveNumber}.
+                          </span>
+                          <span className="font-mono flex-1 ml-2">
+                            {pair.whiteMove ? pair.whiteMove.notation : ""}
+                          </span>
+                          <span className="font-mono flex-1 ml-4">
+                            {pair.blackMove ? pair.blackMove.notation : ""}
+                          </span>
+                        </div>
+                      ));
                   })()}
                 </div>
               )}
@@ -1751,14 +1879,18 @@ export default function Game() {
                           value="easy"
                           checked={difficulty === "easy"}
                           onChange={() => {
-                          if (moveHistory.length > 0) {
-                            if (window.confirm("Changing difficulty will start a new game. Continue?")) {
+                            if (moveHistory.length > 0) {
+                              if (
+                                window.confirm(
+                                  "Changing difficulty will start a new game. Continue?",
+                                )
+                              ) {
+                                setDifficulty("easy");
+                              }
+                            } else {
                               setDifficulty("easy");
                             }
-                          } else {
-                            setDifficulty("easy");
-                          }
-                        }}
+                          }}
                           className="mr-2"
                         />
                         Easy <span className="text-xs">(ELO 800-1200)</span>
@@ -1770,14 +1902,18 @@ export default function Game() {
                           value="medium"
                           checked={difficulty === "medium"}
                           onChange={() => {
-                          if (moveHistory.length > 0) {
-                            if (window.confirm("Changing difficulty will start a new game. Continue?")) {
+                            if (moveHistory.length > 0) {
+                              if (
+                                window.confirm(
+                                  "Changing difficulty will start a new game. Continue?",
+                                )
+                              ) {
+                                setDifficulty("medium");
+                              }
+                            } else {
                               setDifficulty("medium");
                             }
-                          } else {
-                            setDifficulty("medium");
-                          }
-                        }}
+                          }}
                           className="mr-2"
                         />
                         Medium <span className="text-xs">(ELO 1200-1600)</span>
@@ -1789,14 +1925,18 @@ export default function Game() {
                           value="hard"
                           checked={difficulty === "hard"}
                           onChange={() => {
-                          if (moveHistory.length > 0) {
-                            if (window.confirm("Changing difficulty will start a new game. Continue?")) {
+                            if (moveHistory.length > 0) {
+                              if (
+                                window.confirm(
+                                  "Changing difficulty will start a new game. Continue?",
+                                )
+                              ) {
+                                setDifficulty("hard");
+                              }
+                            } else {
                               setDifficulty("hard");
                             }
-                          } else {
-                            setDifficulty("hard");
-                          }
-                        }}
+                          }}
                           className="mr-2"
                         />
                         Hard <span className="text-xs">(ELO 1600-2000)</span>
@@ -1817,14 +1957,18 @@ export default function Game() {
                             value="magnus"
                             checked={difficulty === "magnus"}
                             onChange={() => {
-                          if (moveHistory.length > 0) {
-                            if (window.confirm("Changing difficulty will start a new game. Continue?")) {
-                              setDifficulty("magnus");
-                            }
-                          } else {
-                            setDifficulty("magnus");
-                          }
-                        }}
+                              if (moveHistory.length > 0) {
+                                if (
+                                  window.confirm(
+                                    "Changing difficulty will start a new game. Continue?",
+                                  )
+                                ) {
+                                  setDifficulty("magnus");
+                                }
+                              } else {
+                                setDifficulty("magnus");
+                              }
+                            }}
                             className="mr-2"
                           />
                           Magnus Carlsen
@@ -1890,24 +2034,26 @@ export default function Game() {
                       </div>
                       {timerEnabled && (
                         <div className="flex items-center justify-center mt-4 ml-24 gap-4">
-                          <span className="text-xl w-40 text-left mr-8">Timer Duration:</span>
+                          <span className="text-xl w-40 text-left mr-8">
+                            Timer Duration:
+                          </span>
                           <div className="flex items-center gap-2">
                             <input
                               type="number"
                               value={Math.floor(timerDuration / 60)}
                               onChange={(e) => {
                                 let rawValue = e.target.value;
-                                
-                                if (rawValue.includes('.')) {
-                                  rawValue = rawValue.split('.')[0];
+
+                                if (rawValue.includes(".")) {
+                                  rawValue = rawValue.split(".")[0];
                                 }
-                                
+
                                 let minutes = parseInt(rawValue, 10);
-                                
-                                if (isNaN(minutes) || rawValue === '') {
+
+                                if (isNaN(minutes) || rawValue === "") {
                                   minutes = 1;
                                 }
-                                
+
                                 minutes = parseInt(minutes.toString(), 10);
                                 minutes = Math.max(1, Math.min(999, minutes));
                                 setTimerDuration(minutes * 60);
@@ -1953,8 +2099,12 @@ export default function Game() {
                     <div className="flex flex-col gap-6">
                       <div className="flex items-center justify-between p-4 border rounded-lg">
                         <div>
-                          <h3 className="text-lg font-semibold mb-1">Opponent Profile</h3>
-                          <p className="text-sm opacity-75">View opponent information and stats</p>
+                          <h3 className="text-lg font-semibold mb-1">
+                            Opponent Profile
+                          </h3>
+                          <p className="text-sm opacity-75">
+                            View opponent information and stats
+                          </p>
                         </div>
                         <button
                           onClick={() => {
@@ -1969,8 +2119,12 @@ export default function Game() {
 
                       <div className="flex items-center justify-between p-4 border rounded-lg">
                         <div>
-                          <h3 className="text-lg font-semibold mb-1">New Game</h3>
-                          <p className="text-sm opacity-75">Start a fresh game with current settings</p>
+                          <h3 className="text-lg font-semibold mb-1">
+                            New Game
+                          </h3>
+                          <p className="text-sm opacity-75">
+                            Start a fresh game with current settings
+                          </p>
                         </div>
                         <button
                           onClick={() => {
@@ -1985,8 +2139,12 @@ export default function Game() {
 
                       <div className="flex items-center justify-between p-4 border rounded-lg">
                         <div>
-                          <h3 className="text-lg font-semibold mb-1">Return to Home</h3>
-                          <p className="text-sm opacity-75">Exit to main menu</p>
+                          <h3 className="text-lg font-semibold mb-1">
+                            Return to Home
+                          </h3>
+                          <p className="text-sm opacity-75">
+                            Exit to main menu
+                          </p>
                         </div>
                         <button
                           onClick={() => {

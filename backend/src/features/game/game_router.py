@@ -8,11 +8,9 @@ from src.features.game.game_controller import (
     MakeMoveRequest,
     MakeMoveResponse,
     NewGameResponse,
-    UndoMoveResponse,
     create_game,
     get_game_state,
     make_move,
-    undo_move,
 )
 
 router = APIRouter(prefix="/game", tags=["game"])
@@ -34,15 +32,6 @@ def move(
     current_user: dict[str, str] = Depends(get_current_user),
 ):
     return make_move(game_id, body, current_user["user_id"], db)
-
-
-@router.post("/{game_id}/undo", response_model=UndoMoveResponse)
-def undo(
-    game_id: str,
-    db: Session = Depends(get_db),
-    current_user: dict[str, str] = Depends(get_current_user),
-):
-    return undo_move(game_id, current_user["user_id"], db)
 
 
 @router.get("/{game_id}", response_model=GameStateResponse)

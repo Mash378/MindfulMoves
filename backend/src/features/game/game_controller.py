@@ -20,7 +20,8 @@ class NewGameResponse(BaseModel):
 class MakeMoveRequest(BaseModel):
     uci: str
     current_fen: str
-    bot_style:  str | None = None
+    history_uci: list[str]
+    bot_style: str | None = None
     target_elo: int | None = None
 
 
@@ -34,12 +35,6 @@ class MakeMoveResponse(BaseModel):
 
 class GameStateResponse(BaseModel):
     game_id: str
-    fen: str
-    status: str
-    move_count: int
-
-
-class UndoMoveResponse(BaseModel):
     fen: str
     status: str
     move_count: int
@@ -111,17 +106,73 @@ def make_move(
             status_code=status.HTTP_410_GONE, detail="Game is already over"
         )
 
-    if body.current_fen != str(game.current_fen):
+    previous_moves = (
+        db.query(Move)
+        .filter(Move.game_id == game_id)
+        .order_by(Move.move_number.asc())
+        .all()
+    )
+    server_history_uci: list[str] = []
+    for m in previous_moves:
+        server_history_uci.append(str(m.player_uci))
+        if m.ai_uci:
+            server_history_uci.append(str(m.ai_uci))
+
+    if len(body.history_uci) % 2 != 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="history_uci must represent full turns for active games",
+        )
+
+    if len(body.history_uci) > len(server_history_uci) or (
+        server_history_uci[: len(body.history_uci)] != body.history_uci
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "History out of sync",
+                "server_fen": str(game.current_fen),
+                "server_history_uci": server_history_uci,
+            },
+        )
+
+    keep_move_count = len(body.history_uci) // 2
+    if keep_move_count == 0:
+        undo_fen = STARTING_FEN
+    else:
+        kept_move = previous_moves[keep_move_count - 1]
+        if kept_move.fen_after_ai is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": "History cannot be reconciled",
+                    "server_fen": str(game.current_fen),
+                    "server_history_uci": server_history_uci,
+                },
+            )
+        undo_fen = str(kept_move.fen_after_ai)
+
+    if body.current_fen != undo_fen:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "message": "Board out of sync",
-                "server_fen": str(game.current_fen),
+                "server_fen": undo_fen,
+                "server_history_uci": server_history_uci,
             },
         )
 
+    if keep_move_count < len(previous_moves):
+        (
+            db.query(Move)
+            .filter(Move.game_id == game_id, Move.move_number > keep_move_count)
+            .delete(synchronize_session=False)
+        )
+
+    game.current_fen = undo_fen  # type: ignore
+
     # Validate and apply player move
-    board = chess.Board(str(game.current_fen))
+    board = chess.Board(undo_fen)
     try:
         player_move = chess.Move.from_uci(body.uci)
     except ValueError:
@@ -139,7 +190,7 @@ def make_move(
     fen_after_player = board.fen()
 
     # Check game-over after player's move
-    move_number = db.query(Move).filter(Move.game_id == game_id).count() + 1
+    move_number = keep_move_count + 1
     new_status = _resolve_status_after(board, player_won=True)
 
     ai_uci_str: str | None = None
@@ -147,22 +198,8 @@ def make_move(
 
     if new_status == GameStatus.active:
         if body.target_elo is not None:
-            # ELO mode: build flat UCI history from DB records + current player move
-            uci_history: list[str] = []
-            try:
-                previous_moves = (
-                    db.query(Move)
-                    .filter(Move.game_id == game_id)
-                    .order_by(Move.move_number.asc())
-                    .all()
-                )
-                for m in previous_moves:
-                    uci_history.append(str(m.player_uci))
-                    if m.ai_uci:
-                        uci_history.append(str(m.ai_uci))
-                uci_history.append(body.uci)
-            except Exception:
-                uci_history = [body.uci]
+            # ELO mode consumes flat UCI history.
+            uci_history = [*body.history_uci, body.uci]
 
             ai_uci_str = get_ai_move_elo(
                 fen_after_player,
@@ -171,24 +208,14 @@ def make_move(
                 int(body.target_elo),
             )
         else:
-            # Magnus mode: build SAN history from persisted UCI moves + current player move
+            # Magnus mode consumes SAN history; reconstruct from UCI plies.
             san_history: list[str] = []
             try:
                 history_board = chess.Board()
-                previous_moves = (
-                    db.query(Move)
-                    .filter(Move.game_id == game_id)
-                    .order_by(Move.move_number.asc())
-                    .all()
-                )
-                for m in previous_moves:
-                    player_mv = chess.Move.from_uci(str(m.player_uci))
-                    san_history.append(history_board.san(player_mv))
-                    history_board.push(player_mv)
-                    if m.ai_uci:
-                        ai_mv = chess.Move.from_uci(str(m.ai_uci))
-                        san_history.append(history_board.san(ai_mv))
-                        history_board.push(ai_mv)
+                for ply_uci in body.history_uci:
+                    ply_move = chess.Move.from_uci(ply_uci)
+                    san_history.append(history_board.san(ply_move))
+                    history_board.push(ply_move)
                 san_history.append(history_board.san(player_move))
             except Exception:
                 san_history = []
@@ -235,46 +262,6 @@ def make_move(
         status=new_status.value,
         game_over=new_status != GameStatus.active,
     )
-
-
-def undo_move(game_id: str, user_id: str, db: Session) -> UndoMoveResponse:
-    game = db.query(Game).filter(Game.id == game_id).first()
-    if not game:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Game not found")
-
-    if str(game.user_id) != user_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-
-    if game.status != GameStatus.active:  # type: ignore
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot undo on a finished game")
-
-    last_move = (
-        db.query(Move)
-        .filter(Move.game_id == game_id)
-        .order_by(Move.move_number.desc())
-        .first()
-    )
-    if not last_move:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No moves to undo")
-
-    if last_move.move_number > 1:
-        prior_move = (
-            db.query(Move)
-            .filter(Move.game_id == game_id, Move.move_number == last_move.move_number - 1)
-            .first()
-        )
-        if prior_move is None or prior_move.fen_after_ai is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot undo")
-        restored_fen = str(prior_move.fen_after_ai)
-    else:
-        restored_fen = STARTING_FEN
-
-    db.delete(last_move)
-    game.current_fen = restored_fen  # type: ignore
-    db.commit()
-
-    remaining_count = db.query(Move).filter(Move.game_id == game_id).count()
-    return UndoMoveResponse(fen=restored_fen, status=GameStatus.active.value, move_count=remaining_count)
 
 
 def get_game_state(game_id: str, user_id: str, db: Session) -> GameStateResponse:
