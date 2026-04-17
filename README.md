@@ -72,6 +72,12 @@ uv sync
 
 > **Important:** `uv.lock` is the source of truth for exact dependency versions and must always be kept up to date. If you ever add, remove, or change a dependency in `pyproject.toml` (the backend's dependency config file), run `uv lock` before `uv sync` to update the lockfile first. Committing code without an updated `uv.lock` will cause other developers to install different package versions than you.
 
+Update database with difficulty column:
+
+```bash
+uv run python migrations/add_difficulty.py
+```
+
 ### 3. Frontend setup
 
 Open a new terminal and run:

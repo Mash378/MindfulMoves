@@ -2,6 +2,8 @@ import { useState, useEffect } from "react"
 import { useNavigate, useLocation } from "react-router-dom";
 import { useSettings } from "./SettingsContext";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 export default function Settings() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -15,7 +17,106 @@ export default function Settings() {
   const { changePassword, setChangePassword } = useSettings();
   const { isLoggedIn, setIsLoggedIn, username, setUsername, logout } = useSettings();
 
+  // Add state for user stats
+  const [userStats, setUserStats] = useState({
+    easy: { games_played: 0, games_won: 0, win_rate: 0 },
+    medium: { games_played: 0, games_won: 0, win_rate: 0 },
+    hard: { games_played: 0, games_won: 0, win_rate: 0 },
+    magnus: { games_played: 0, games_won: 0, win_rate: 0 }
+  });
+  const [statsLoading, setStatsLoading] = useState(false);
+  // Sync with global difficulty - when global changes, this updates too
+  const [selectedStatDifficulty, setSelectedStatDifficulty] = useState(difficulty || "medium");
+  
+  const difficulties = ["easy", "medium", "hard", "magnus"];
+
   const fromGame = location.state?.from === 'game' || location.state?.fromGame === true;
+
+  // Update selectedStatDifficulty when global difficulty changes
+  useEffect(() => {
+    setSelectedStatDifficulty(difficulty);
+  }, [difficulty]);
+
+  // Fetch user stats using the leaderboard endpoint
+  useEffect(() => {
+    if (isLoggedIn && activeTab === "user") {
+      fetchUserStats();
+    }
+  }, [isLoggedIn, activeTab, selectedStatDifficulty]); // Re-fetch when difficulty changes
+
+  const fetchUserStats = async () => {
+    setStatsLoading(true);
+    const token = localStorage.getItem("token");
+    const currentUsername = localStorage.getItem("playerName");
+    
+    try {
+      // Fetch leaderboard data for all difficulties
+      const statsPromises = difficulties.map(async (diff) => {
+        const response = await fetch(`${API_URL}/api/leaderboard/${diff}`, {
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+        });
+        if (response.ok) {
+          const leaderboardData = await response.json();
+          // Find the current user in the leaderboard
+          const userEntry = leaderboardData.find(
+            player => player.username === currentUsername
+          );
+          return {
+            difficulty: diff,
+            games_played: userEntry?.games_played || 0,
+            games_won: userEntry?.games_won || 0,
+            win_rate: userEntry?.games_played > 0 
+              ? Math.round((userEntry.games_won / userEntry.games_played) * 100)
+              : 0
+          };
+        }
+        return { difficulty: diff, games_played: 0, games_won: 0, win_rate: 0 };
+      });
+      
+      const results = await Promise.all(statsPromises);
+      const statsMap = {};
+      results.forEach(result => {
+        statsMap[result.difficulty] = {
+          games_played: result.games_played || 0,
+          games_won: result.games_won || 0,
+          win_rate: result.win_rate || 0
+        };
+      });
+      
+      setUserStats(statsMap);
+    } catch (error) {
+      console.error("Error fetching user stats:", error);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  const navigateStatDifficulty = (direction) => {
+    const currentIndex = difficulties.indexOf(selectedStatDifficulty);
+    if (direction === "prev" && currentIndex > 0) {
+      const newDifficulty = difficulties[currentIndex - 1];
+      setSelectedStatDifficulty(newDifficulty);
+      // Also update the global difficulty setting
+      setDifficulty(newDifficulty);
+    } else if (direction === "next" && currentIndex < difficulties.length - 1) {
+      const newDifficulty = difficulties[currentIndex + 1];
+      setSelectedStatDifficulty(newDifficulty);
+      // Also update the global difficulty setting
+      setDifficulty(newDifficulty);
+    }
+  };
+
+  const getDifficultyDisplayName = (diff) => {
+    const names = {
+      easy: "Easy",
+      medium: "Medium",
+      hard: "Hard",
+      magnus: "Magnus Carlsen"
+    };
+    return names[diff] || diff;
+  };
 
   const panelBgClass = {
     light: "bg-white text-black",
@@ -73,9 +174,8 @@ export default function Settings() {
     }
   };
 
-  // Use the logout function from context to handle sign out, which will clear localStorage and update state
   const handleSignOut = () => {
-    logout(); // This handles clearing localStorage and state
+    logout();
     navigate("/");
   };
 
@@ -104,7 +204,6 @@ export default function Settings() {
 
           {/* LEFT SIDEBAR */}
           <div className={`w-1/4 border-r flex flex-col ${sidebarBgClass}`}>
-            {/* User Profile Tab - Always visible */}
             <button
               onClick={() => setActiveTab("user")}
               className={`p-4 text-left ${
@@ -141,7 +240,6 @@ export default function Settings() {
               Game Display
             </button>
 
-            {/* Account Settings - Only visible when logged in */}
             {isLoggedIn && (
               <button
                 onClick={() => setActiveTab("account")}
@@ -158,35 +256,75 @@ export default function Settings() {
           <div className={`w-3/4 p-8 overflow-y-auto ${panelBgClass}`}>
             {activeTab === "user" && (
               <div className="space-y-4 text-lg">
-                <h2 className="text-2xl font-semibold mb-8">User Profile</h2>
+                <h2 className="text-2xl font-semibold mb-6">User Profile</h2>
                 {isLoggedIn ? (
-                  <div className="text-center py-8 px-4 border rounded-lg mt-8">
+                  <div className="text-center py-8 px-4 border rounded-lg mt-4">
                     <p className="mb-6">Username: <strong>{username}</strong></p>
-                    <p className="mb-6">Games Played: {localStorage.getItem("gamesPlayed") || "-"}</p>
-                    <p className="mb-6">Games Won: {localStorage.getItem("gamesWon") || "-"}</p>
-                    <p className="mb-6">Win Percentage: {localStorage.getItem("gamesPlayed") > 0 ? ((localStorage.getItem("gamesWon") || 0) / localStorage.getItem("gamesPlayed") * 100).toFixed(2) : 0}%</p>
+                    
+                    {/* Difficulty Selector In User Profile */}
+                    <div className="flex items-center justify-center gap-6 mb-6">
+                      <button
+                        onClick={() => navigateStatDifficulty("prev")}
+                        disabled={difficulties.indexOf(selectedStatDifficulty) === 0}
+                        className={`text-2xl font-bold p-1 rounded-lg transition
+                          ${difficulties.indexOf(selectedStatDifficulty) === 0 
+                            ? "opacity-30 cursor-not-allowed" 
+                            : buttonHoverClass}`}
+                      >
+                        ‹
+                      </button>
+                      
+                      <div>
+                        <p className="text-sm font-medium mb-1">Difficulty:</p>
+                        <p className="text-xl font-semibold min-w-[180px]">
+                          {getDifficultyDisplayName(selectedStatDifficulty)}
+                        </p>
+                      </div>
+                      
+                      <button
+                        onClick={() => navigateStatDifficulty("next")}
+                        disabled={difficulties.indexOf(selectedStatDifficulty) === difficulties.length - 1}
+                        className={`text-2xl font-bold p-1 rounded-lg transition
+                          ${difficulties.indexOf(selectedStatDifficulty) === difficulties.length - 1 
+                            ? "opacity-30 cursor-not-allowed" 
+                            : buttonHoverClass}`}
+                      >
+                        ›
+                      </button>
+                    </div>
+
+                    {/* Stats display */}
+                    {statsLoading ? (
+                      <div className="text-center py-8">
+                        <div className="text-xl">Loading stats...</div>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="mb-6">Games Played: <strong>{userStats[selectedStatDifficulty]?.games_played || 0}</strong></p>
+                        <p className="mb-6">Games Won: <strong>{userStats[selectedStatDifficulty]?.games_won || 0}</strong></p>
+                        <p className="mb-6">Win Percentage: <strong>{userStats[selectedStatDifficulty]?.win_rate || 0}%</strong></p>
+                      </>
+                    )}
                   </div>
                 ) : (
-                  <>
-                    <div className="text-center py-8 px-4 border rounded-lg mt-8">
-                      <p className="text-2xl mb-4">Playing as Guest</p>
-                      <p className="mb-6">Create an account to save your progress and compete on the leaderboard!</p>
-                      <div className="flex gap-4 justify-center">
-                        <button
-                          onClick={() => navigate("/login")}
-                          className={`px-6 py-2 mt-4 ${buttonBgClass} rounded-lg ${buttonHoverClass}`}
-                        >
-                          Log In
-                        </button>
-                        <button
-                          onClick={() => navigate("/signup")}
-                          className={`px-6 py-2 mt-4 ${buttonBgClass} rounded-lg ${buttonHoverClass}`}
-                        >
-                          Sign Up
-                        </button>
-                      </div>
+                  <div className="text-center py-8 px-4 border rounded-lg mt-8">
+                    {/* <p className="text-2xl mb-4">Playing as Guest</p> */}
+                    <p className="text-xl mt-6 mb-6">Create an account to save your progress and compete on the leaderboard!</p>
+                    <div className="flex gap-4 justify-center">
+                      <button
+                        onClick={() => navigate("/login")}
+                        className={`px-6 py-2 mt-4 ${buttonBgClass} rounded-lg ${buttonHoverClass}`}
+                      >
+                        Log In
+                      </button>
+                      <button
+                        onClick={() => navigate("/signup")}
+                        className={`px-6 py-2 mt-4 ${buttonBgClass} rounded-lg ${buttonHoverClass}`}
+                      >
+                        Sign Up
+                      </button>
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
             )}
@@ -322,14 +460,14 @@ export default function Settings() {
                             }
                             
                             minutes = parseInt(minutes.toString(), 10);
-                            minutes = Math.max(1, Math.min(999, minutes));
+                            minutes = Math.max(1, Math.min(60, minutes));
                             setTimerDuration(minutes * 60);
                           }}
                           onFocus={(e) => {
                             e.target.select();
                           }}
                           min="1"
-                          max="999"
+                          max="60"
                           step="1"
                           className={`px-4 py-2 rounded-lg border w-28 text-center ${buttonBgClass} focus:outline-none focus:ring-2 focus:ring-blue-500`}
                         />

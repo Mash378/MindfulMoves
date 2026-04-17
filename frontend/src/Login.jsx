@@ -13,7 +13,7 @@ export default function Login() {
   
   const navigate = useNavigate();
   const location = useLocation();
-  const { theme, changeUsername, setChangeUsername, changePassword, setChangePassword, setIsLoggedIn, setUsername } = useSettings();
+  const { theme, difficulty, changeUsername, setChangeUsername, changePassword, setChangePassword, setIsLoggedIn, setUsername } = useSettings();
 
   // Check if we came from settings (and whether it was from game or not)
   const fromGame = location.state?.fromGame === true;
@@ -106,15 +106,20 @@ export default function Login() {
       setIsLoggedIn(true);
       setUsername(name);
 
-      // Create a new game on the backend
       const gameRes = await fetch(`${import.meta.env.VITE_API_URL}/game/new`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${data.access_token}`,
         },
+        body: JSON.stringify({
+          difficulty: difficulty
+        }),
       });
+      
       if (!gameRes.ok) {
+        const errorData = await gameRes.json().catch(() => null);
+        console.error("Failed to create game:", errorData);
         setError("Failed to create game");
         return;
       }

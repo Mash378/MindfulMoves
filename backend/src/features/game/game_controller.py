@@ -74,10 +74,11 @@ def _update_user_stats(user: User, result: GameStatus) -> None:
     user.elo_rating = max(0, player_elo + round(32 * (outcome - expected)))  # type: ignore
 
 
-def create_game(user_id: str, db: Session) -> NewGameResponse:
+def create_game(user_id: str, difficulty: str, db: Session) -> NewGameResponse:
     game = Game(
         id=str(uuid.uuid4()),
         user_id=user_id,
+        difficulty=difficulty,
         status=GameStatus.active,
         current_fen=STARTING_FEN,
     )

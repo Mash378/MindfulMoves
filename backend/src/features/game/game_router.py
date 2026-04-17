@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from src.db.database import get_db
 from src.middleware.auth import get_current_user
@@ -15,13 +16,22 @@ from src.features.game.game_controller import (
 
 router = APIRouter(prefix="/game", tags=["game"])
 
+# Add this request model
+class NewGameRequest(BaseModel):
+    difficulty: str = "medium"  # default to medium if not specified
+
 
 @router.post("/new", response_model=NewGameResponse)
 def new_game(
+    request: NewGameRequest, 
     db: Session = Depends(get_db),
     current_user: dict[str, str] = Depends(get_current_user),
 ):
-    return create_game(current_user["user_id"], db)
+    return create_game(
+        current_user["user_id"], 
+        request.difficulty,  
+        db
+    )
 
 
 @router.post("/{game_id}/move", response_model=MakeMoveResponse)
