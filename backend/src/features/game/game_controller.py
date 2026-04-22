@@ -92,13 +92,12 @@ def create_game(user_id: str, difficulty: str, db: Session) -> NewGameResponse:
         game_id=str(game.id), fen=str(game.current_fen), status=game.status.value
     )
 
+    # Flow: Check game ownership → check client history against server (supports undo by trimming ahead moves) → validate and apply player move → invoke AI → persist → update stats if game ended.
+
 
 def make_move(
     game_id: str, body: MakeMoveRequest, user_id: str, db: Session
 ) -> MakeMoveResponse:
-    # Flow: verify ownership → reconcile client history against server (supports undo by
-    # trimming ahead moves) → validate and apply player move → invoke AI → persist →
-    # update stats if game ended.
     game = db.query(Game).filter(Game.id == game_id).first()
     if not game:
         raise HTTPException(
