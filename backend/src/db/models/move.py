@@ -17,3 +17,8 @@ class Move(Base):
     fen_after_player = Column(String, nullable=False)
     fen_after_ai = Column(String, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
