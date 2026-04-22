@@ -3,6 +3,8 @@ from sqlalchemy.orm import sessionmaker
 from src.data.env import server_env
 from src.db.models import Base
 
+# Boilerplate code to set up database connection
+
 engine = create_engine(
     server_env.DATABASE_URL, connect_args={"check_same_thread": False}
 )

@@ -1,3 +1,4 @@
+# Core game logic: create games, validate/apply moves, invoke AI, and update user stats.
 import uuid
 
 import chess
@@ -43,6 +44,7 @@ class GameStateResponse(BaseModel):
 def _resolve_status_after(board: chess.Board, player_won: bool) -> GameStatus:
     """Return the terminal GameStatus for the given board position."""
     if board.is_checkmate():
+        # player_won=True means white (the human) just delivered checkmate
         return GameStatus.white_wins if player_won else GameStatus.black_wins
     # All draw conditions
     if (
@@ -70,6 +72,7 @@ def _update_user_stats(user: User, result: GameStatus) -> None:
         if result == GameStatus.white_wins
         else (0.5 if result == GameStatus.draw else 0.0)
     )
+    # Standard ELO expected score formula
     expected = 1 / (1 + 10 ** ((ai_elo - player_elo) / 400))  # type: ignore
     user.elo_rating = max(0, player_elo + round(32 * (outcome - expected)))  # type: ignore
 
@@ -93,6 +96,9 @@ def create_game(user_id: str, difficulty: str, db: Session) -> NewGameResponse:
 def make_move(
     game_id: str, body: MakeMoveRequest, user_id: str, db: Session
 ) -> MakeMoveResponse:
+    # Flow: verify ownership → reconcile client history against server (supports undo by
+    # trimming ahead moves) → validate and apply player move → invoke AI → persist →
+    # update stats if game ended.
     game = db.query(Game).filter(Game.id == game_id).first()
     if not game:
         raise HTTPException(

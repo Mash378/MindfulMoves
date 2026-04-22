@@ -1,3 +1,4 @@
+# Game endpoints: create game, make move, get state, end game, handle timeout.
 import chess
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -20,9 +21,9 @@ from src.features.game.game_controller import (
 
 router = APIRouter(prefix="/game", tags=["game"])
 
-# Add this request model
+
 class NewGameRequest(BaseModel):
-    difficulty: str = "medium"  # default to medium if not specified
+    difficulty: str = "medium"
 
 
 @router.post("/new", response_model=NewGameResponse)
@@ -112,8 +113,6 @@ def timeout_game(
     current_user: dict[str, str] = Depends(get_current_user),
 ):
     """Handle game timeout - player loses"""
-    from src.features.game.game_controller import _update_user_stats
-    
     game = db.query(Game).filter(Game.id == game_id).first()
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
@@ -127,11 +126,10 @@ def timeout_game(
     # Player ran out of time = AI wins
     game.status = GameStatus.black_wins
     db.commit()
-    
-    # Update user stats (THIS IS WHAT UPDATES THE DATABASE)
+
     user = db.query(User).filter(User.id == current_user["user_id"]).first()
     if user:
         _update_user_stats(user, GameStatus.black_wins)
-        db.commit()  # Commit the stats changes
+        db.commit()
     
     return {"status": game.status.value, "game_over": True}

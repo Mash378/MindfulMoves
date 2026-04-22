@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# Contains all environment variables to avoid direct import, also validate env first to avoid errors
 class Env:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 

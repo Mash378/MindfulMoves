@@ -1,3 +1,4 @@
+# Handles user signup, login, password hashing, and JWT token creation.
 import uuid
 from datetime import datetime, timedelta, timezone
 
