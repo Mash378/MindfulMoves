@@ -359,6 +359,7 @@ useEffect(() => {
           if (newTime === 0) {
             setGameStatus("timeout");
             setBackendStatus("black_wins");
+            handleTimeout();
             clearInterval(interval);
           }
 
@@ -417,6 +418,7 @@ useEffect(() => {
       gameStatus === "playing" &&
       !lightInCheck
     ) {
+      endGame();
       setIsStalemate(true);
       setBackendStatus("draw");
       setGameStatus("stalemate");
@@ -430,6 +432,7 @@ useEffect(() => {
       gameStatus === "playing" &&
       !darkInCheck
     ) {
+      endGame();
       setIsStalemate(true);
       setBackendStatus("draw");
       setGameStatus("stalemate");
@@ -1333,6 +1336,7 @@ useEffect(() => {
   };
 
   const handleSettingsClick = () => {
+    setSelectedStatDifficulty(difficulty);
     setShowSettings(true);
   };
 
@@ -1354,6 +1358,58 @@ useEffect(() => {
   const handleReturnHome = () => {
     localStorage.removeItem("gameState");
     navigate("/");
+  };
+
+  const endGame = async () => {
+    // Don't end if already over
+    if (backendStatus !== "active") return;
+    
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/game/${gameId}/end`, {
+        method: "POST",
+        headers: apiHeaders(),
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBackendStatus(data.status);
+        
+        // Update UI based on status
+        if (data.status === "white_wins") {
+          setCheckmateWinner("Light");
+          setGameStatus("checkmate");
+        } else if (data.status === "black_wins") {
+          setCheckmateWinner("Dark");
+          setGameStatus("checkmate");
+        } else if (data.status === "draw") {
+          setIsStalemate(true);
+          setGameStatus("stalemate");
+        }
+      }
+    } catch (error) {
+      console.error("Failed to end game:", error);
+    }
+  };
+
+  const handleTimeout = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/game/${gameId}/timeout`, {
+        method: "POST",
+        headers: apiHeaders(),
+      });
+      
+      if (!response.ok) {
+        console.error("Failed to record timeout:", await response.text());
+      }
+    } catch (error) {
+      console.error("Failed to record timeout:", error);
+    }
   };
 
   
@@ -1438,13 +1494,9 @@ useEffect(() => {
       if (direction === "prev" && currentIndex > 0) {
         const newDifficulty = difficulties[currentIndex - 1];
         setSelectedStatDifficulty(newDifficulty);
-        // Also update the global difficulty setting
-        setDifficulty(newDifficulty);
       } else if (direction === "next" && currentIndex < difficulties.length - 1) {
         const newDifficulty = difficulties[currentIndex + 1];
         setSelectedStatDifficulty(newDifficulty);
-        // Also update the global difficulty setting
-        setDifficulty(newDifficulty);
       }
     };
   

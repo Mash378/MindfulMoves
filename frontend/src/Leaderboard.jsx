@@ -156,9 +156,9 @@ export default function Leaderboard() {
         </button>
 
         <div className={`h-screen ${pageBgClass} bg-opacity-80 p-10 rounded-lg shadow-lg overflow-y-auto`}>
-          <h1 className="text-5xl font-bold mt-16 mb-8">Leaderboard</h1>
+          <h1 className="text-5xl font-bold mb-7">Leaderboard</h1>
           
-          <div className="flex items-center justify-center gap-6 mb-8">
+          <div className="flex items-center justify-center gap-6 mb-7">
             <button
               onClick={() => navigateDifficulty("prev")}
               disabled={difficulties.indexOf(currentDifficulty) === 0}
@@ -196,7 +196,7 @@ export default function Leaderboard() {
             </div>
             
             {leaderboardData[currentDifficulty]?.map((player, index) => (
-              <div key={player.id || index} className="grid grid-cols-12 gap-4 mt-3 py-2 rounded">
+              <div key={player.id || index} className="grid grid-cols-12 gap-4 py-2 rounded">
                 <div className="col-span-1 font-bold">{index + 1}</div>
                 <div className="col-span-7">{player.username || player.name}</div>
                 <div className="col-span-2 text-center font-bold">{player.games_won || player.wins || 0}</div>

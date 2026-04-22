@@ -21,14 +21,13 @@ async def get_leaderboard(difficulty: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"Invalid difficulty: {difficulty}")
     
     # Query to get wins and total games per user for specific difficulty
-    # A win is when status is either white_wins or black_wins (non-draw, non-active)
     results = db.query(
         User.id,
         User.username,
         func.count(Game.id).label('total_games'),
         func.sum(
             case(
-                (Game.status.in_([GameStatus.white_wins, GameStatus.black_wins]), 1),
+                (Game.status == GameStatus.white_wins, 1),  
                 else_=0
             )
         ).label('wins')
@@ -44,7 +43,7 @@ async def get_leaderboard(difficulty: str, db: Session = Depends(get_db)):
     ).order_by(
         func.sum(
             case(
-                (Game.status.in_([GameStatus.white_wins, GameStatus.black_wins]), 1),
+                (Game.status == GameStatus.white_wins, 1),
                 else_=0
             )
         ).desc(),
