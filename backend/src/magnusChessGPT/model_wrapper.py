@@ -5,6 +5,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel, PeftConfig
 import os
 import warnings
+import time
 
 class ChessModel:
     def __init__(self, model_path):
@@ -47,11 +48,14 @@ class ChessModel:
                 "move": "e4",
                 "alternatives": ["d4", "Nf3"]
             }
+        t0 = time.time()
         context = " ".join(move_history) if move_history else " "
 
         inputs = self.tokenizer(context, return_tensors="pt", truncation=True, max_length=512).to(self.model.device)
+        print(f"[TIMING] Tokenization: {time.time() - t0:.2f}s")
 
         #No gradients saved
+        t1 = time.time()
         with torch.inference_mode():
             outputs = self.model.generate(
                 **inputs,
@@ -61,7 +65,8 @@ class ChessModel:
                 pad_token_id=self.tokenizer.eos_token_id,
                 do_sample=False
             )
-
+        print(f"[TIMING] model.generate: {time.time() - t1:.2f}s")
+        t2 = time.time()
         #Decode predictions
         moves = []
         for output in outputs:
@@ -93,7 +98,7 @@ class ChessModel:
         if self.engine and len(legal_moves) > 1:
             best_move = self.pick_best_move(legal_moves, board)
             legal_moves = [best_move] + [m for m in legal_moves if m != best_move]
-
+        print(f"[TIMING] Stockfish: {time.time() - t2:.2f}s")
         return {
             "move": legal_moves[0],
             "alternatives": legal_moves[1:top_k]
@@ -109,7 +114,7 @@ class ChessModel:
                 try:
                     chess_move = board.parse_san(move)
                     board.push(chess_move)
-                    info = self.engine.analyse(board, chess.engine.Limit(depth=6))
+                    info = self.engine.analyse(board, chess.engine.Limit(depth=4))
                     score = info["score"].relative.score(mate_score=10000)
                     board.pop()
                     if score is not None and score > best_score:
